@@ -1,0 +1,13 @@
+project_id = "qgrwsyxrqgravziylgdp"
+
+[functions.find-closest-driver]
+verify_jwt = false
+
+[functions.negotiate]
+verify_jwt = false
+
+[functions.verify-carrier]
+verify_jwt = false
+
+[functions.generate-shipment-docs]
+verify_jwt = false
