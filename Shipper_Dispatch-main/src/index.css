@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 45 20% 98%;
+    --foreground: 220 15% 18%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 18%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 18%;
+
+    /* Elegant honey gold - warm but not brown */
+    --primary: 38 75% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 15% 96%;
+    --secondary-foreground: 220 15% 18%;
+
+    --muted: 40 10% 94%;
+    --muted-foreground: 220 10% 45%;
+
+    /* Soft warm accent */
+    --accent: 40 50% 96%;
+    --accent-foreground: 38 70% 42%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 12% 90%;
+    --input: 40 12% 90%;
+    --ring: 38 75% 55%;
+
+    --radius: 1rem;
+
+    /* Sidebar - clean tones */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 15% 22%;
+    --sidebar-primary: 38 75% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 40% 96%;
+    --sidebar-accent-foreground: 38 65% 45%;
+    --sidebar-border: 40 10% 93%;
+    --sidebar-ring: 38 75% 55%;
+    --sidebar-muted: 220 10% 50%;
+
+    /* Status Colors - refined with light elegant teal */
+    --status-dispatched: 38 70% 52%;
+    --status-delivered: 168 45% 52%;
+    --status-canceled: 220 8% 55%;
+    --status-late: 0 70% 55%;
+    --status-alert: 38 75% 55%;
+
+    /* Trend Colors - lighter sophisticated green */
+    --trend-positive: 168 45% 52%;
+    --trend-negative: 0 70% 55%;
+
+    /* Dashboard */
+    --dashboard-card-shadow: 0 1px 3px 0 hsl(220 15% 18% / 0.04), 0 1px 2px -1px hsl(220 15% 18% / 0.03);
+    --dashboard-card-shadow-hover: 0 4px 12px -2px hsl(220 15% 18% / 0.07), 0 2px 4px -2px hsl(220 15% 18% / 0.03);
+  }
+
+  .dark {
+    --background: 220 15% 6%;
+    --foreground: 40 10% 98%;
+
+    --card: 220 12% 9%;
+    --card-foreground: 40 10% 98%;
+
+    --popover: 220 12% 9%;
+    --popover-foreground: 40 10% 98%;
+
+    /* Honey gold for dark mode */
+    --primary: 38 70% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 10% 14%;
+    --secondary-foreground: 40 10% 98%;
+
+    --muted: 220 10% 14%;
+    --muted-foreground: 220 8% 60%;
+
+    --accent: 38 35% 14%;
+    --accent-foreground: 38 60% 65%;
+
+    --destructive: 0 60% 40%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 10% 14%;
+    --input: 220 10% 14%;
+    --ring: 38 70% 55%;
+
+    --sidebar-background: 220 15% 6%;
+    --sidebar-foreground: 40 10% 98%;
+    --sidebar-primary: 38 70% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 10% 10%;
+    --sidebar-accent-foreground: 40 10% 98%;
+    --sidebar-border: 220 10% 10%;
+    --sidebar-ring: 38 70% 55%;
+    --sidebar-muted: 220 8% 60%;
+
+    --trend-positive: 168 45% 55%;
+    --trend-negative: 0 70% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .dashboard-card {
+    @apply bg-card rounded-2xl border border-border p-6 transition-all duration-200;
+    box-shadow: var(--dashboard-card-shadow);
+  }
+
+  .dashboard-card:hover {
+    box-shadow: var(--dashboard-card-shadow-hover);
+  }
+
+  .filter-card {
+    @apply bg-card rounded-2xl border border-border p-5 transition-all duration-200 cursor-pointer;
+    box-shadow: var(--dashboard-card-shadow);
+  }
+
+  .filter-card:hover {
+    box-shadow: var(--dashboard-card-shadow-hover);
+  }
+
+  .glass-card {
+    @apply backdrop-blur-xl bg-white/80 border border-border rounded-2xl;
+    box-shadow: var(--dashboard-card-shadow);
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-dispatched {
+    @apply bg-amber-50 text-amber-600;
+  }
+
+  .status-delivered {
+    @apply bg-emerald-50 text-emerald-600;
+  }
+
+  .status-canceled {
+    @apply bg-stone-100 text-stone-500;
+  }
+
+  .status-late {
+    @apply bg-red-50 text-red-600;
+  }
+
+  .status-alert {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .trend-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .trend-positive {
+    @apply text-emerald-600;
+  }
+
+  .trend-negative {
+    @apply text-red-600;
+  }
+
+  /* Custom visible scrollbar */
+  .scrollbar-visible {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.5) hsl(var(--muted) / 0.5);
+    overflow-y: scroll !important;
+  }
+
+  .scrollbar-visible::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scrollbar-visible::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.3);
+    border-radius: 4px;
+  }
+
+  .scrollbar-visible::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.4);
+    border-radius: 4px;
+    border: 1px solid hsl(var(--border));
+  }
+
+  .scrollbar-visible::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+}
+
+/* Route connector animations */
+@keyframes travelDot {
+  0% {
+    left: 0%;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.5);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.5);
+  }
+}
+
+@keyframes travelTruck {
+  0% {
+    left: -10%;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+}
