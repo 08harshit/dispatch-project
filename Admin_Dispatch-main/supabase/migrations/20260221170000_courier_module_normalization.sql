@@ -1,5 +1,5 @@
 -- ============================================================================
--- Courier Module Normalization Migration
+-- Courier Module Normalization Migration (see 20260224100000 for contracts/trips)
 -- ============================================================================
 -- This migration:
 -- 1. Adds missing columns to the existing `couriers` table
