@@ -33,8 +33,12 @@ import { cn } from "@/lib/utils";
 import { AddCourierForm, CourierFormData } from "@/components/forms/AddCourierForm";
 import { toast } from "sonner";
 import { fetchCouriers, fetchCourierStats, createCourier, CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
-
-type FilterTab = "all" | "compliant" | "non-compliant" | "new";
+import type { FilterTab } from "@/types/common";
+import { StatsGrid, StatItem } from "@/components/common/StatsGrid";
+import { HistoryDialog } from "@/components/common/HistoryDialog";
+import { DocumentsDialog } from "@/components/common/DocumentsDialog";
+import { EmptyState } from "@/components/common/EmptyState";
+import { useDialogManager } from "@/hooks/useDialogManager";
 
 // Courier type is now imported from courierService as CourierListItem
 type Courier = CourierListItem;
@@ -57,12 +61,7 @@ export default function Couriers() {
   const [equipmentTypeFilter, setEquipmentTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
-  const [docsDialogOpen, setDocsDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const dialogs = useDialogManager<Courier>();
 
   // --- Build server-side filters ---
   const buildFilters = useCallback((): CourierFilters => {
@@ -128,34 +127,7 @@ export default function Couriers() {
     setStatusFilter("all");
   };
 
-  const handleView = (courier: Courier) => {
-    setSelectedCourier(courier);
-    setViewDialogOpen(true);
-  };
 
-  const handleHistory = (courier: Courier) => {
-    setSelectedCourier(courier);
-    setHistoryDialogOpen(true);
-  };
-
-  const handleDocs = (courier: Courier) => {
-    setSelectedCourier(courier);
-    setDocsDialogOpen(true);
-  };
-
-  const handleEdit = (courier: Courier) => {
-    setSelectedCourier(courier);
-    setEditDialogOpen(true);
-  };
-
-  const handleDelete = (courier: Courier) => {
-    toast.error(`${courier.name} deleted`);
-  };
-
-  const handlePassword = (courier: Courier) => {
-    setSelectedCourier(courier);
-    setPasswordDialogOpen(true);
-  };
 
   const handleToggleStatus = (courier: Courier) => {
     const newStatus = courier.status === "active" ? "inactive" : "active";
@@ -213,68 +185,16 @@ export default function Couriers() {
         </div>
 
         {/* Stats - Bento Grid Style */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
-          {[
+        <StatsGrid
+          stats={[
             { label: "Total Couriers", value: totalCouriers, icon: Truck, color: "primary", delay: 1 },
             { label: "In Compliance", value: compliantCount, icon: CheckCircle, color: "success", delay: 2 },
             { label: "Out of Compliance", value: nonCompliantCount, icon: XCircle, color: "destructive", delay: 3 },
             { label: "New Couriers", value: newCouriersCount, icon: UserPlus, color: "primary", delay: 4 },
             { label: "Alerts", value: alertsCount, icon: AlertTriangle, color: "warning", delay: 5 },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className={cn(
-                "group relative overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-500 hover:-translate-y-1 cursor-pointer animate-fade-in",
-                `stagger-${stat.delay}`
-              )}
-            >
-              {/* Gradient overlay on hover */}
-              <div className={cn(
-                "absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none",
-                stat.color === "primary" && "bg-gradient-to-br from-primary/10 to-transparent",
-                stat.color === "success" && "bg-gradient-to-br from-success/10 to-transparent",
-                stat.color === "destructive" && "bg-gradient-to-br from-destructive/10 to-transparent",
-                stat.color === "warning" && "bg-gradient-to-br from-warning/10 to-transparent"
-              )} />
-
-              <div className="relative flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
-                  <p className={cn(
-                    "text-3xl font-bold mt-1 transition-transform duration-300 group-hover:scale-110 origin-left",
-                    stat.color === "success" && "text-success",
-                    stat.color === "destructive" && "text-destructive",
-                    stat.color === "warning" && "text-warning"
-                  )}>{stat.value}</p>
-                </div>
-                <div className={cn(
-                  "rounded-2xl p-3 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6",
-                  stat.color === "primary" && "bg-primary/10",
-                  stat.color === "success" && "bg-success/10",
-                  stat.color === "destructive" && "bg-destructive/10",
-                  stat.color === "warning" && "bg-warning/10"
-                )}>
-                  <stat.icon className={cn(
-                    "h-6 w-6",
-                    stat.color === "primary" && "text-primary",
-                    stat.color === "success" && "text-success",
-                    stat.color === "destructive" && "text-destructive",
-                    stat.color === "warning" && "text-warning"
-                  )} />
-                </div>
-              </div>
-
-              {/* Bottom accent line */}
-              <div className={cn(
-                "absolute bottom-0 left-0 h-1 w-0 group-hover:w-full transition-all duration-500",
-                stat.color === "primary" && "bg-gradient-to-r from-primary to-primary/50",
-                stat.color === "success" && "bg-gradient-to-r from-success to-success/50",
-                stat.color === "destructive" && "bg-gradient-to-r from-destructive to-destructive/50",
-                stat.color === "warning" && "bg-gradient-to-r from-warning to-warning/50"
-              )} />
-            </div>
-          ))}
-        </div>
+          ]}
+          columns={5}
+        />
 
         {/* Filter Tabs and Cards */}
         <Card className="overflow-hidden border-0 shadow-elevated bg-card/80 backdrop-blur-sm">
@@ -505,9 +425,9 @@ export default function Couriers() {
                     {/* Right: Actions */}
                     <div className="flex items-center gap-2 pt-4 lg:pt-0 border-t lg:border-t-0 lg:border-l border-border/30 lg:pl-5">
                       {[
-                        { icon: History, action: () => handleHistory(courier), label: "History" },
-                        { icon: FileText, action: () => handleDocs(courier), label: "Documents" },
-                        { icon: Eye, action: () => handleView(courier), label: "View" },
+                        { icon: History, action: () => dialogs.open("history", courier), label: "History" },
+                        { icon: FileText, action: () => dialogs.open("docs", courier), label: "Documents" },
+                        { icon: Eye, action: () => dialogs.open("view", courier), label: "View" },
                       ].map((btn, i) => (
                         <Button
                           key={i}
@@ -526,11 +446,11 @@ export default function Couriers() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-52 rounded-xl p-2">
-                          <DropdownMenuItem onClick={() => handleView(courier)} className="gap-3 rounded-lg">
+                          <DropdownMenuItem onClick={() => dialogs.open("view", courier)} className="gap-3 rounded-lg">
                             <Eye className="h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEdit(courier)} className="gap-3 rounded-lg">
+                          <DropdownMenuItem onClick={() => dialogs.open("edit", courier)} className="gap-3 rounded-lg">
                             <Edit className="h-4 w-4" />
                             Edit Courier
                           </DropdownMenuItem>
@@ -538,13 +458,13 @@ export default function Couriers() {
                             <ExternalLink className="h-4 w-4" />
                             Verify FMCSA
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handlePassword(courier)} className="gap-3 rounded-lg">
+                          <DropdownMenuItem onClick={() => dialogs.open("password", courier)} className="gap-3 rounded-lg">
                             <KeyRound className="h-4 w-4" />
                             Mot de passe
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="my-2" />
                           <DropdownMenuItem
-                            onClick={() => handleDelete(courier)}
+                            onClick={() => toast.error(`${courier.name} deleted`)}
                             className="gap-3 rounded-lg text-destructive focus:text-destructive focus:bg-destructive/10"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -558,20 +478,13 @@ export default function Couriers() {
               ))}
 
               {!loading && filteredCouriers.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="relative">
-                    <div className="rounded-3xl bg-gradient-to-br from-muted/50 to-muted/20 p-6 mb-4">
-                      <Truck className="h-12 w-12 text-muted-foreground" />
-                    </div>
-                    <div className="absolute inset-0 rounded-3xl bg-primary/5 blur-xl" />
-                  </div>
-                  <p className="text-xl font-bold text-foreground">No couriers found</p>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-xs">Try adjusting your search criteria or filters to find what you're looking for</p>
-                  <Button variant="outline" className="mt-4 gap-2" onClick={clearFilters}>
-                    <X className="h-4 w-4" />
-                    Clear Filters
-                  </Button>
-                </div>
+                <EmptyState
+                  icon={Truck}
+                  title="No couriers found"
+                  description="Try adjusting your search criteria or filters to find what you're looking for"
+                  actionLabel="Clear Filters"
+                  onAction={clearFilters}
+                />
               )}
             </div>
           </CardContent>
@@ -579,27 +492,27 @@ export default function Couriers() {
       </div>
 
       {/* View Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+      <Dialog open={dialogs.isOpen("view")} onOpenChange={dialogs.setOpen.bind(null, "view")}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Courier Details</DialogTitle>
             <DialogDescription>
-              {selectedCourier?.id} - {selectedCourier?.name}
+              {dialogs.selected?.id} - {dialogs.selected?.name}
             </DialogDescription>
           </DialogHeader>
-          {selectedCourier && (
+          {dialogs.selected && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge className={selectedCourier.status === "active" ? "bg-success/10 text-success border-0" : "bg-muted text-muted-foreground border-0"}>
-                    {selectedCourier.status === "active" ? "Active" : "Inactive"}
+                  <Badge className={dialogs.selected.status === "active" ? "bg-success/10 text-success border-0" : "bg-muted text-muted-foreground border-0"}>
+                    {dialogs.selected.status === "active" ? "Active" : "Inactive"}
                   </Badge>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Compliance</p>
-                  <Badge className={cn("border-0", selectedCourier.compliance === "compliant" ? "compliance-compliant" : "compliance-non-compliant")}>
-                    {selectedCourier.compliance === "compliant" ? "Compliant" : "Non-Compliant"}
+                  <Badge className={cn("border-0", dialogs.selected.compliance === "compliant" ? "compliance-compliant" : "compliance-non-compliant")}>
+                    {dialogs.selected.compliance === "compliant" ? "Compliant" : "Non-Compliant"}
                   </Badge>
                 </div>
               </div>
@@ -607,47 +520,47 @@ export default function Couriers() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{selectedCourier.contact}</span>
+                  <span>{dialogs.selected.contact}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{selectedCourier.phone}</span>
+                  <span>{dialogs.selected.phone}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>{selectedCourier.address}</span>
+                  <span>{dialogs.selected.address}</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 pt-2 border-t">
                 <div>
                   <p className="text-xs text-muted-foreground">USDOT #</p>
-                  <p className="font-mono text-sm">{selectedCourier.usdot}</p>
+                  <p className="font-mono text-sm">{dialogs.selected.usdot}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">MC #</p>
-                  <p className="font-mono text-sm">{selectedCourier.mc}</p>
+                  <p className="font-mono text-sm">{dialogs.selected.mc}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground"># of Trucks</p>
-                  <p className="text-sm font-medium">{selectedCourier.trucks}</p>
+                  <p className="text-sm font-medium">{dialogs.selected.trucks}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Equipment Type</p>
-                  <p className="text-sm">{selectedCourier.equipmentType}</p>
+                  <p className="text-sm">{dialogs.selected.equipmentType}</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-muted-foreground">Insurance Company</p>
-                  <p className="text-sm">{selectedCourier.insuranceCompany}</p>
+                  <p className="text-sm">{dialogs.selected.insuranceCompany}</p>
                 </div>
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => handleVerifyFMCSA(selectedCourier.usdot)}>
+                <Button variant="outline" size="sm" onClick={() => handleVerifyFMCSA(dialogs.selected.usdot)}>
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Verify on FMCSA
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => handleEdit(selectedCourier)}>
+                <Button variant="outline" size="sm" onClick={() => dialogs.open("edit", dialogs.selected)}>
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </Button>
@@ -658,98 +571,47 @@ export default function Couriers() {
       </Dialog>
 
       {/* History Dialog */}
-      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Activity History</DialogTitle>
-            <DialogDescription>
-              {selectedCourier?.name}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedCourier && (
-            <div className="space-y-3">
-              {selectedCourier.history.length > 0 ? (
-                selectedCourier.history.map((item, index) => (
-                  <div key={index} className="flex items-start gap-3 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div>
-                      <p className="font-medium">{item.action}</p>
-                      <p className="text-xs text-muted-foreground">{item.date}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-sm">No history available</p>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <HistoryDialog
+        open={dialogs.isOpen("history")}
+        onOpenChange={dialogs.setOpen.bind(null, "history")}
+        entityName={dialogs.selected?.name || ""}
+        history={dialogs.selected?.history || []}
+      />
 
       {/* Documents Dialog */}
-      <Dialog open={docsDialogOpen} onOpenChange={setDocsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Documents</DialogTitle>
-            <DialogDescription>
-              {selectedCourier?.name}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedCourier && (
-            <div className="space-y-3">
-              {selectedCourier.documents.length > 0 ? (
-                selectedCourier.documents.map((doc, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="text-sm font-medium">{doc.name}</p>
-                        <p className="text-xs text-muted-foreground">{doc.type} • {doc.date}</p>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => toast.info(`Downloading ${doc.name}...`)}>
-                      Download
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-sm">No documents available</p>
-              )}
-              <Button variant="outline" className="w-full" onClick={() => toast.info("Upload feature coming soon!")}>
-                <Plus className="mr-2 h-4 w-4" />
-                Upload Document
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <DocumentsDialog
+        open={dialogs.isOpen("docs")}
+        onOpenChange={dialogs.setOpen.bind(null, "docs")}
+        entityName={dialogs.selected?.name || ""}
+        documents={dialogs.selected?.documents || []}
+      />
 
       {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={dialogs.isOpen("edit")} onOpenChange={dialogs.setOpen.bind(null, "edit")}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Courier</DialogTitle>
             <DialogDescription>
-              {selectedCourier?.id} - {selectedCourier?.name}
+              {dialogs.selected?.id} - {dialogs.selected?.name}
             </DialogDescription>
           </DialogHeader>
-          {selectedCourier && (
+          {dialogs.selected && (
             <AddCourierForm
               onSuccess={() => {
-                setEditDialogOpen(false);
+                dialogs.setOpen.bind(null, "edit")(false);
                 loadData();
               }}
               isEditing={true}
               initialData={{
-                courierName: selectedCourier.name,
-                businessEmail: selectedCourier.contact,
-                businessPhone: selectedCourier.phone,
-                address: selectedCourier.address,
-                usdot: selectedCourier.usdot,
-                mcNumber: selectedCourier.mc,
-                numTrucks: String(selectedCourier.trucks),
-                equipmentType: selectedCourier.equipmentType,
-                insuranceCompany: selectedCourier.insuranceCompany,
+                courierName: dialogs.selected.name,
+                businessEmail: dialogs.selected.contact,
+                businessPhone: dialogs.selected.phone,
+                address: dialogs.selected.address,
+                usdot: dialogs.selected.usdot,
+                mcNumber: dialogs.selected.mc,
+                numTrucks: String(dialogs.selected.trucks),
+                equipmentType: dialogs.selected.equipmentType,
+                insuranceCompany: dialogs.selected.insuranceCompany,
               } as Partial<CourierFormData>}
             />
           )}
@@ -757,13 +619,13 @@ export default function Couriers() {
       </Dialog>
 
       {/* Password Management Dialog */}
-      {selectedCourier && (
+      {dialogs.selected && (
         <AccountPasswordDialog
-          open={passwordDialogOpen}
-          onOpenChange={setPasswordDialogOpen}
-          accountName={selectedCourier.name}
-          accountId={selectedCourier.id}
-          accountEmail={selectedCourier.contact}
+          open={dialogs.isOpen("password")}
+          onOpenChange={dialogs.setOpen.bind(null, "password")}
+          accountName={dialogs.selected.name}
+          accountId={dialogs.selected.id}
+          accountEmail={dialogs.selected.contact}
         />
       )}
     </MainLayout>

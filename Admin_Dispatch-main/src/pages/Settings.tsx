@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getColorClasses } from "@/utils/styleHelpers";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,11 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { 
-  User, 
-  Bell, 
-  Shield, 
-  Building, 
+import {
+  User,
+  Bell,
+  Shield,
+  Building,
   Settings as SettingsIcon,
   Mail,
   Smartphone,
@@ -53,22 +54,7 @@ const notificationSettings = [
   { id: "urgent", label: "Urgent Alerts Only", description: "Only receive urgent notifications", icon: AlertTriangle, enabled: false },
 ];
 
-const getColorClasses = (color: string) => {
-  switch (color) {
-    case "success":
-      return { bg: "bg-success/10", text: "text-success", gradient: "from-success/20 via-success/5 to-transparent", border: "bg-success" };
-    case "primary":
-      return { bg: "bg-primary/10", text: "text-primary", gradient: "from-primary/20 via-primary/5 to-transparent", border: "bg-primary" };
-    case "warning":
-      return { bg: "bg-warning/10", text: "text-warning", gradient: "from-warning/20 via-warning/5 to-transparent", border: "bg-warning" };
-    case "accent":
-      return { bg: "bg-accent/10", text: "text-accent", gradient: "from-accent/20 via-accent/5 to-transparent", border: "bg-accent" };
-    case "info":
-      return { bg: "bg-primary/10", text: "text-primary", gradient: "from-primary/20 via-primary/5 to-transparent", border: "bg-primary" };
-    default:
-      return { bg: "bg-primary/10", text: "text-primary", gradient: "from-primary/20 via-primary/5 to-transparent", border: "bg-primary" };
-  }
-};
+// getColorClasses is now imported from @/utils/styleHelpers
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
@@ -98,7 +84,7 @@ export default function Settings() {
   const passwordsMismatch = newPassword && confirmPassword && newPassword !== confirmPassword;
 
   const toggleNotification = (id: string) => {
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, enabled: !n.enabled } : n)
     );
   };
@@ -168,14 +154,13 @@ export default function Settings() {
               <button
                 key={category.id}
                 onClick={() => setActiveSection(category.id)}
-                className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 animate-fade-in ${
-                  isActive ? 'bg-card border-primary/30 shadow-glow' : 'bg-card/80 backdrop-blur-sm'
-                }`}
+                className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 animate-fade-in ${isActive ? 'bg-card border-primary/30 shadow-glow' : 'bg-card/80 backdrop-blur-sm'
+                  }`}
                 style={{ animationDelay: `${index * 100}ms` }}
               >
                 {/* Hover gradient overlay */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                
+
                 {/* Active indicator */}
                 {isActive && (
                   <div className="absolute top-2 right-2">
@@ -185,7 +170,7 @@ export default function Settings() {
                     </span>
                   </div>
                 )}
-                
+
                 <div className="relative flex items-center gap-3">
                   <div className={`p-2.5 rounded-xl ${colors.bg} transition-transform duration-300 group-hover:scale-110`}>
                     <category.icon className={`h-5 w-5 ${colors.text}`} />
@@ -354,12 +339,10 @@ export default function Settings() {
                         style={{ animationDelay: `${index * 50}ms` }}
                       >
                         <div className="flex items-center gap-4">
-                          <div className={`p-2.5 rounded-xl transition-all duration-300 ${
-                            notification.enabled ? 'bg-primary/10' : 'bg-muted/50'
-                          }`}>
-                            <notification.icon className={`h-5 w-5 transition-colors duration-300 ${
-                              notification.enabled ? 'text-primary' : 'text-muted-foreground'
-                            }`} />
+                          <div className={`p-2.5 rounded-xl transition-all duration-300 ${notification.enabled ? 'bg-primary/10' : 'bg-muted/50'
+                            }`}>
+                            <notification.icon className={`h-5 w-5 transition-colors duration-300 ${notification.enabled ? 'text-primary' : 'text-muted-foreground'
+                              }`} />
                           </div>
                           <div>
                             <p className="font-semibold text-foreground">{notification.label}</p>
@@ -370,7 +353,7 @@ export default function Settings() {
                           checked={notification.enabled}
                           onCheckedChange={() => toggleNotification(notification.id)}
                         />
-                        
+
                         {/* Hover glow effect */}
                         <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-lg" />
                       </div>
@@ -483,11 +466,10 @@ export default function Settings() {
                         <div className="space-y-2 animate-fade-in">
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">Force du mot de passe</span>
-                            <span className={`text-xs font-semibold ${
-                              passwordStrength.score <= 25 ? 'text-destructive' :
-                              passwordStrength.score <= 50 ? 'text-warning' :
-                              passwordStrength.score <= 75 ? 'text-primary' : 'text-success'
-                            }`}>{passwordStrength.label}</span>
+                            <span className={`text-xs font-semibold ${passwordStrength.score <= 25 ? 'text-destructive' :
+                                passwordStrength.score <= 50 ? 'text-warning' :
+                                  passwordStrength.score <= 75 ? 'text-primary' : 'text-success'
+                              }`}>{passwordStrength.label}</span>
                           </div>
                           <div className="h-2 rounded-full bg-muted overflow-hidden">
                             <div
@@ -522,9 +504,8 @@ export default function Settings() {
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder="••••••••"
-                          className={`pl-10 pr-10 bg-background/50 border-muted-foreground/20 focus:border-primary ${
-                            passwordsMatch ? 'border-success/50' : passwordsMismatch ? 'border-destructive/50' : ''
-                          }`}
+                          className={`pl-10 pr-10 bg-background/50 border-muted-foreground/20 focus:border-primary ${passwordsMatch ? 'border-success/50' : passwordsMismatch ? 'border-destructive/50' : ''
+                            }`}
                         />
                         <button
                           type="button"
@@ -567,9 +548,8 @@ export default function Settings() {
                       ].map((session, index) => (
                         <div
                           key={index}
-                          className={`group flex items-center justify-between p-3 rounded-xl border transition-all duration-300 hover:shadow-sm animate-fade-in ${
-                            session.current ? 'bg-success/5 border-success/20' : 'bg-muted/10'
-                          }`}
+                          className={`group flex items-center justify-between p-3 rounded-xl border transition-all duration-300 hover:shadow-sm animate-fade-in ${session.current ? 'bg-success/5 border-success/20' : 'bg-muted/10'
+                            }`}
                           style={{ animationDelay: `${index * 60}ms` }}
                         >
                           <div className="flex items-center gap-3">
@@ -631,16 +611,16 @@ export default function Settings() {
                       <Lock className="h-4 w-4 text-muted-foreground" />
                       <h4 className="font-semibold text-foreground">Change Password</h4>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="currentPassword" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Password</Label>
                         <div className="relative">
                           <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="currentPassword" 
-                            type={showPassword ? "text" : "password"} 
-                            className="pl-10 pr-10 bg-muted/30 border-muted-foreground/20 focus:border-primary" 
+                          <Input
+                            id="currentPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="pl-10 pr-10 bg-muted/30 border-muted-foreground/20 focus:border-primary"
                           />
                           <button
                             type="button"
@@ -654,18 +634,18 @@ export default function Settings() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="newPassword" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">New Password</Label>
-                          <Input 
-                            id="newPassword" 
-                            type={showPassword ? "text" : "password"} 
-                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary" 
+                          <Input
+                            id="newPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
                           />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="confirmPassword" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Confirm Password</Label>
-                          <Input 
-                            id="confirmPassword" 
-                            type={showPassword ? "text" : "password"} 
-                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary" 
+                          <Input
+                            id="confirmPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
                           />
                         </div>
                       </div>

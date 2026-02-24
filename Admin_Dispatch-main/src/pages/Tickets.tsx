@@ -1,4 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { getTicketStatusConfig, getPriorityConfig as getSharedPriorityConfig } from "@/utils/styleHelpers";
+import { Ticket, Priority, TicketStatus as Status, TicketComment, fetchTickets } from "@/services/ticketService";
+import { useDialogManager } from "@/hooks/useDialogManager";
+import { useTableSort } from "@/hooks/useTableSort";
+import { StatsGrid } from "@/components/common/StatsGrid";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,105 +58,19 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type Priority = "low" | "medium" | "high" | "urgent";
-type Status = "open" | "in-progress" | "resolved" | "closed";
 
-interface Comment {
-  id: string;
-  author: string;
-  text: string;
-  date: string;
-}
 
-interface Ticket {
-  id: string;
-  title: string;
-  description: string;
-  priority: Priority;
-  status: Status;
-  createdAt: string;
-  updatedAt: string;
-  comments: Comment[];
-}
-
-const mockTickets: Ticket[] = [
-  {
-    id: "TK-001",
-    title: "Update courier payment schedule",
-    description: "Need to revise the payment terms for Q2 courier contracts to align with new budget.",
-    priority: "high",
-    status: "open",
-    createdAt: "2024-01-20",
-    updatedAt: "2024-01-22",
-    comments: [
-      { id: "c1", author: "Admin", text: "Flagged as high priority for finance review.", date: "2024-01-21" },
-    ],
-  },
-  {
-    id: "TK-002",
-    title: "Onboard new shipper: Metro Auto Sales",
-    description: "Complete onboarding paperwork and system setup for Metro Auto Sales.",
-    priority: "medium",
-    status: "in-progress",
-    createdAt: "2024-01-18",
-    updatedAt: "2024-01-23",
-    comments: [
-      { id: "c2", author: "Admin", text: "Documents received, pending verification.", date: "2024-01-19" },
-      { id: "c3", author: "Admin", text: "Verification complete, setting up account.", date: "2024-01-23" },
-    ],
-  },
-  {
-    id: "TK-003",
-    title: "Investigate late delivery LD-002",
-    description: "Load LD-002 was delayed by 2 days. Investigate cause and update shipper.",
-    priority: "urgent",
-    status: "open",
-    createdAt: "2024-01-25",
-    updatedAt: "2024-01-25",
-    comments: [],
-  },
-  {
-    id: "TK-004",
-    title: "Prepare monthly analytics report",
-    description: "Compile delivery stats, revenue, and courier performance for January.",
-    priority: "low",
-    status: "resolved",
-    createdAt: "2024-01-10",
-    updatedAt: "2024-01-28",
-    comments: [
-      { id: "c4", author: "Admin", text: "Report drafted and sent for review.", date: "2024-01-28" },
-    ],
-  },
-  {
-    id: "TK-005",
-    title: "Fix billing discrepancy for Express Logistics",
-    description: "Invoice #1042 shows incorrect amount. Needs correction before end of month.",
-    priority: "high",
-    status: "closed",
-    createdAt: "2024-01-05",
-    updatedAt: "2024-01-15",
-    comments: [
-      { id: "c5", author: "Admin", text: "Corrected invoice sent. Confirmed by client.", date: "2024-01-15" },
-    ],
-  },
-];
-
-const getPriorityConfig = (p: Priority) => {
-  switch (p) {
-    case "urgent": return { label: "Urgent", className: "bg-destructive/15 text-destructive border-destructive/20" };
-    case "high": return { label: "High", className: "bg-warning/15 text-warning border-warning/20" };
-    case "medium": return { label: "Medium", className: "bg-primary/15 text-primary border-primary/20" };
-    case "low": return { label: "Low", className: "bg-muted text-muted-foreground border-border" };
-  }
-};
+const getPriorityConfig = getSharedPriorityConfig;
 
 const getStatusConfig = (s: Status) => {
-  switch (s) {
-    case "open": return { label: "Open", icon: CircleDot, className: "bg-primary/15 text-primary border-primary/20" };
-    case "in-progress": return { label: "In Progress", icon: Clock, className: "bg-warning/15 text-warning border-warning/20" };
-    case "resolved": return { label: "Resolved", icon: CheckCircle, className: "bg-success/15 text-success border-success/20" };
-    case "closed": return { label: "Closed", icon: X, className: "bg-muted text-muted-foreground border-border" };
-  }
+  const config = getTicketStatusConfig(s);
+  const iconMap: Record<string, typeof CircleDot> = {
+    open: CircleDot,
+    "in-progress": Clock,
+    resolved: CheckCircle,
+    closed: X,
+  };
+  return { ...config, icon: iconMap[s] || CircleDot };
 };
 
 type SortField = "id" | "title" | "priority" | "status" | "createdAt";
@@ -161,18 +80,19 @@ const priorityOrder: Record<Priority, number> = { low: 0, medium: 1, high: 2, ur
 const statusOrder: Record<Status, number> = { open: 0, "in-progress": 1, resolved: 2, closed: 3 };
 
 export default function Tickets() {
-  const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+
+  useEffect(() => {
+    fetchTickets().then(setTickets);
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [sortField, setSortField] = useState<SortField>("createdAt");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const { sortField, sortDir, toggleSort } = useTableSort<SortField>("createdAt", "desc");
 
   // Dialogs
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const dialogs = useDialogManager<Ticket>();
 
   // New ticket form
   const [newTicket, setNewTicket] = useState({ title: "", description: "", priority: "medium" as Priority });
@@ -204,18 +124,13 @@ export default function Tickets() {
   const hasActiveFilters = statusFilter !== "all" || priorityFilter !== "all" || searchQuery;
   const clearFilters = () => { setStatusFilter("all"); setPriorityFilter("all"); setSearchQuery(""); };
 
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortField(field); setSortDir("asc"); }
-  };
-
   const handleAddTicket = () => {
     if (!newTicket.title.trim() || !newTicket.description.trim()) {
       toast.error("Please fill in title and description"); return;
     }
     const id = `TK-${String(tickets.length + 1).padStart(3, "0")}`;
     const today = new Date().toISOString().slice(0, 10);
-    setTickets(prev => [...prev, { id, ...newTicket, status: "open", createdAt: today, updatedAt: today, comments: [] }]);
+    setTickets(prev => [...prev, { id, ...newTicket, status: "open" as Status, createdAt: today, updatedAt: today, comments: [] }]);
     setNewTicket({ title: "", description: "", priority: "medium" });
     setAddDialogOpen(false);
     toast.success("Ticket created successfully");
@@ -224,17 +139,17 @@ export default function Tickets() {
   const handleStatusChange = (ticket: Ticket, newStatus: Status) => {
     const today = new Date().toISOString().slice(0, 10);
     setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: newStatus, updatedAt: today } : t));
-    if (selectedTicket?.id === ticket.id) setSelectedTicket({ ...ticket, status: newStatus, updatedAt: today });
+    if (dialogs.selected?.id === ticket.id) dialogs.setSelected({ ...ticket, status: newStatus, updatedAt: today });
     toast.success(`Ticket ${ticket.id} updated to ${getStatusConfig(newStatus).label}`);
   };
 
   const handleAddComment = () => {
-    if (!newComment.trim() || !selectedTicket) return;
+    if (!newComment.trim() || !dialogs.selected) return;
     const today = new Date().toISOString().slice(0, 10);
-    const comment: Comment = { id: `c${Date.now()}`, author: "Admin", text: newComment.trim(), date: today };
-    const updated = { ...selectedTicket, comments: [...selectedTicket.comments, comment], updatedAt: today };
+    const comment: TicketComment = { id: `c${Date.now()}`, author: "Admin", text: newComment.trim(), date: today };
+    const updated = { ...dialogs.selected, comments: [...dialogs.selected.comments, comment], updatedAt: today };
     setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
-    setSelectedTicket(updated);
+    dialogs.setSelected(updated);
     setNewComment("");
     toast.success("Comment added");
   };
@@ -244,7 +159,6 @@ export default function Tickets() {
     toast.success(`Ticket ${ticket.id} deleted`);
   };
 
-  const handleView = (ticket: Ticket) => { setSelectedTicket(ticket); setViewDialogOpen(true); };
 
   const SortableHead = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <TableHead className="cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort(field)}>
@@ -294,48 +208,15 @@ export default function Tickets() {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          {[
+        <StatsGrid
+          stats={[
             { label: "Open", value: openCount, icon: CircleDot, color: "primary", delay: 1 },
             { label: "In Progress", value: inProgressCount, icon: Clock, color: "warning", delay: 2 },
             { label: "Resolved", value: resolvedCount, icon: CheckCircle, color: "success", delay: 3 },
             { label: "High Priority", value: urgentCount, icon: AlertTriangle, color: "warning", delay: 4 },
-          ].map((stat) => (
-            <div key={stat.label} className={cn("group relative overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-500 hover:-translate-y-1 cursor-pointer animate-fade-in", `stagger-${stat.delay}`)}>
-              <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none",
-                stat.color === "primary" && "bg-gradient-to-br from-primary/10 to-transparent",
-                stat.color === "success" && "bg-gradient-to-br from-success/10 to-transparent",
-                stat.color === "warning" && "bg-gradient-to-br from-warning/10 to-transparent"
-              )} />
-              <div className="relative flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
-                  <p className={cn("text-3xl font-bold mt-1 transition-transform duration-300 group-hover:scale-110 origin-left",
-                    stat.color === "success" && "text-success",
-                    stat.color === "warning" && "text-warning"
-                  )}>{stat.value}</p>
-                </div>
-                <div className={cn("rounded-2xl p-3 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6",
-                  stat.color === "primary" && "bg-primary/10",
-                  stat.color === "success" && "bg-success/10",
-                  stat.color === "warning" && "bg-warning/10"
-                )}>
-                  <stat.icon className={cn("h-6 w-6",
-                    stat.color === "primary" && "text-primary",
-                    stat.color === "success" && "text-success",
-                    stat.color === "warning" && "text-warning"
-                  )} />
-                </div>
-              </div>
-              <div className={cn("absolute bottom-0 left-0 h-1 w-0 group-hover:w-full transition-all duration-500",
-                stat.color === "primary" && "bg-gradient-to-r from-primary to-primary/50",
-                stat.color === "success" && "bg-gradient-to-r from-success to-success/50",
-                stat.color === "warning" && "bg-gradient-to-r from-warning to-warning/50"
-              )} />
-            </div>
-          ))}
-        </div>
+          ]}
+          columns={4}
+        />
 
         {/* Table */}
         <Card className="overflow-hidden border-0 shadow-elevated bg-card/80 backdrop-blur-sm">
@@ -410,7 +291,7 @@ export default function Tickets() {
                     const statusConf = getStatusConfig(ticket.status);
                     const StatusIcon = statusConf.icon;
                     return (
-                      <TableRow key={ticket.id} className="group hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => handleView(ticket)}>
+                      <TableRow key={ticket.id} className="group hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => dialogs.open("view", ticket)}>
                         <TableCell className="font-mono text-xs text-primary/80">{ticket.id}</TableCell>
                         <TableCell>
                           <div>
@@ -435,7 +316,7 @@ export default function Tickets() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleView(ticket)}><Eye className="h-4 w-4 mr-2" />View</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => dialogs.open("view", ticket)}><Eye className="h-4 w-4 mr-2" />View</DropdownMenuItem>
                               {ticket.status === "open" && <DropdownMenuItem onClick={() => handleStatusChange(ticket, "in-progress")}><Clock className="h-4 w-4 mr-2" />Start</DropdownMenuItem>}
                               {ticket.status === "in-progress" && <DropdownMenuItem onClick={() => handleStatusChange(ticket, "resolved")}><CheckCircle className="h-4 w-4 mr-2" />Resolve</DropdownMenuItem>}
                               {ticket.status === "resolved" && <DropdownMenuItem onClick={() => handleStatusChange(ticket, "closed")}><X className="h-4 w-4 mr-2" />Close</DropdownMenuItem>}
@@ -488,18 +369,18 @@ export default function Tickets() {
         </Dialog>
 
         {/* View Ticket Dialog */}
-        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <Dialog open={dialogs.isOpen("view")} onOpenChange={dialogs.setOpen.bind(null, "view")}>
           <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-            {selectedTicket && (() => {
-              const pc = getPriorityConfig(selectedTicket.priority);
-              const sc = getStatusConfig(selectedTicket.status);
+            {dialogs.selected && (() => {
+              const pc = getPriorityConfig(dialogs.selected.priority);
+              const sc = getStatusConfig(dialogs.selected.status);
               const SI = sc.icon;
               return (
                 <>
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-lg">
-                      <span className="font-mono text-primary">{selectedTicket.id}</span>
-                      {selectedTicket.title}
+                      <span className="font-mono text-primary">{dialogs.selected.id}</span>
+                      {dialogs.selected.title}
                     </DialogTitle>
                   </DialogHeader>
                   <div className="space-y-6 py-2">
@@ -507,30 +388,30 @@ export default function Tickets() {
                     <div className="flex flex-wrap gap-3">
                       <Badge variant="outline" className={cn("gap-1", sc.className)}><SI className="h-3 w-3" />{sc.label}</Badge>
                       <Badge variant="outline" className={cn(pc.className)}>{pc.label}</Badge>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />Created {selectedTicket.createdAt}</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />Created {dialogs.selected.createdAt}</span>
                     </div>
 
                     {/* Description */}
                     <div className="rounded-xl border bg-muted/30 p-4">
-                      <p className="text-sm text-foreground leading-relaxed">{selectedTicket.description}</p>
+                      <p className="text-sm text-foreground leading-relaxed">{dialogs.selected.description}</p>
                     </div>
 
                     {/* Status actions */}
                     <div className="flex gap-2">
-                      {selectedTicket.status === "open" && <Button size="sm" variant="outline" onClick={() => handleStatusChange(selectedTicket, "in-progress")} className="gap-1"><Clock className="h-3.5 w-3.5" />Start</Button>}
-                      {selectedTicket.status === "in-progress" && <Button size="sm" variant="outline" onClick={() => handleStatusChange(selectedTicket, "resolved")} className="gap-1"><CheckCircle className="h-3.5 w-3.5" />Resolve</Button>}
-                      {selectedTicket.status === "resolved" && <Button size="sm" variant="outline" onClick={() => handleStatusChange(selectedTicket, "closed")} className="gap-1"><X className="h-3.5 w-3.5" />Close</Button>}
+                      {dialogs.selected.status === "open" && <Button size="sm" variant="outline" onClick={() => handleStatusChange(dialogs.selected, "in-progress")} className="gap-1"><Clock className="h-3.5 w-3.5" />Start</Button>}
+                      {dialogs.selected.status === "in-progress" && <Button size="sm" variant="outline" onClick={() => handleStatusChange(dialogs.selected, "resolved")} className="gap-1"><CheckCircle className="h-3.5 w-3.5" />Resolve</Button>}
+                      {dialogs.selected.status === "resolved" && <Button size="sm" variant="outline" onClick={() => handleStatusChange(dialogs.selected, "closed")} className="gap-1"><X className="h-3.5 w-3.5" />Close</Button>}
                     </div>
 
                     {/* Comments */}
                     <div className="space-y-3">
                       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-primary" /> Notes ({selectedTicket.comments.length})
+                        <MessageSquare className="h-4 w-4 text-primary" /> Notes ({dialogs.selected.comments.length})
                       </h3>
-                      {selectedTicket.comments.length === 0 && (
+                      {dialogs.selected.comments.length === 0 && (
                         <p className="text-sm text-muted-foreground italic">No notes yet.</p>
                       )}
-                      {selectedTicket.comments.map((c) => (
+                      {dialogs.selected.comments.map((c) => (
                         <div key={c.id} className="rounded-lg border bg-background p-3 space-y-1">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-foreground">{c.author}</span>

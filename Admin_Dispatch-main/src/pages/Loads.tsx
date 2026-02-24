@@ -1,4 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { getLoadStatusConfig } from "@/utils/styleHelpers";
+import { Load, fetchLoads } from "@/services/loadService";
+import { useDialogManager } from "@/hooks/useDialogManager";
+import { useTableSort } from "@/hooks/useTableSort";
+import { StatsGrid } from "@/components/common/StatsGrid";
+import { HistoryDialog } from "@/components/common/HistoryDialog";
+import { DocumentsDialog } from "@/components/common/DocumentsDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,90 +66,17 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-interface Load {
-  id: string;
-  vehicleYear: string;
-  vehicleMake: string;
-  vehicleModel: string;
-  vin: string;
-  stockNumber: string;
-  shipperInfo: string;
-  pickupDate: string;
-  dropOffDate: string;
-  status: "pending" | "in-transit" | "delivered" | "cancelled";
-  courierInfo: string;
-  docs: { name: string; type: string }[];
-  history: { date: string; action: string }[];
-}
 
-const mockLoads: Load[] = [
-  {
-    id: "LD-001",
-    vehicleYear: "2024", vehicleMake: "Toyota", vehicleModel: "Camry",
-    vin: "1HGBH41JXMN109186", stockNumber: "TC2024-01",
-    shipperInfo: "AutoMax Dealers", pickupDate: "2024-01-20", dropOffDate: "2024-01-25",
-    status: "delivered", courierInfo: "Express Logistics LLC",
-    docs: [{ name: "BOL", type: "PDF" }, { name: "Inspection Report", type: "PDF" }],
-    history: [{ date: "2024-01-25", action: "Delivered" }, { date: "2024-01-20", action: "Picked up" }, { date: "2024-01-18", action: "Load created" }],
-  },
-  {
-    id: "LD-002",
-    vehicleYear: "2023", vehicleMake: "Honda", vehicleModel: "Accord",
-    vin: "2HGFC2F52MH567234", stockNumber: "HA2023-42",
-    shipperInfo: "National Auto Auction", pickupDate: "2024-01-22", dropOffDate: "2024-01-28",
-    status: "in-transit", courierInfo: "Swift Delivery Co",
-    docs: [{ name: "BOL", type: "PDF" }],
-    history: [{ date: "2024-01-22", action: "Picked up" }, { date: "2024-01-21", action: "Load created" }],
-  },
-  {
-    id: "LD-003",
-    vehicleYear: "2024", vehicleMake: "Ford", vehicleModel: "F-150",
-    vin: "1FTEW1EP9MFC12345", stockNumber: "FF150-88",
-    shipperInfo: "Metro Auto Sales", pickupDate: "2024-01-25", dropOffDate: "2024-01-30",
-    status: "pending", courierInfo: "Prime Carriers Inc",
-    docs: [], history: [{ date: "2024-01-24", action: "Load created" }],
-  },
-  {
-    id: "LD-004",
-    vehicleYear: "2023", vehicleMake: "BMW", vehicleModel: "X5",
-    vin: "5UXCR6C05N9K78901", stockNumber: "BX5-2301",
-    shipperInfo: "Luxury Motors Inc", pickupDate: "2024-01-18", dropOffDate: "2024-01-23",
-    status: "delivered", courierInfo: "Express Logistics LLC",
-    docs: [{ name: "BOL", type: "PDF" }, { name: "Inspection Report", type: "PDF" }, { name: "Insurance Cert", type: "PDF" }],
-    history: [{ date: "2024-01-23", action: "Delivered" }, { date: "2024-01-18", action: "Picked up" }, { date: "2024-01-16", action: "Load created" }],
-  },
-  {
-    id: "LD-005",
-    vehicleYear: "2024", vehicleMake: "Tesla", vehicleModel: "Model 3",
-    vin: "5YJ3E1EA1NF345678", stockNumber: "TM3-2405",
-    shipperInfo: "EV Direct Sales", pickupDate: "2024-01-26", dropOffDate: "2024-02-01",
-    status: "cancelled", courierInfo: "FastTrack Transport",
-    docs: [{ name: "BOL", type: "PDF" }],
-    history: [{ date: "2024-01-25", action: "Load cancelled" }, { date: "2024-01-24", action: "Load created" }],
-  },
-  {
-    id: "LD-006",
-    vehicleYear: "2023", vehicleMake: "Chevrolet", vehicleModel: "Silverado",
-    vin: "3GCPWDED1NG567890", stockNumber: "CS-2306",
-    shipperInfo: "AutoMax Dealers", pickupDate: "2024-01-27", dropOffDate: "2024-02-02",
-    status: "pending", courierInfo: "Reliable Freight",
-    docs: [], history: [{ date: "2024-01-26", action: "Load created" }],
-  },
-];
 
 const getStatusConfig = (status: string) => {
-  switch (status) {
-    case "delivered":
-      return { label: "Delivered", icon: CheckCircle, className: "bg-success/15 text-success border-success/20" };
-    case "in-transit":
-      return { label: "In Transit", icon: TruckIcon, className: "bg-primary/15 text-primary border-primary/20" };
-    case "pending":
-      return { label: "Pending", icon: Clock, className: "bg-warning/15 text-warning border-warning/20" };
-    case "cancelled":
-      return { label: "Cancelled", icon: X, className: "bg-destructive/15 text-destructive border-destructive/20" };
-    default:
-      return { label: status, icon: Clock, className: "bg-muted text-muted-foreground" };
-  }
+  const config = getLoadStatusConfig(status);
+  const iconMap: Record<string, typeof CheckCircle> = {
+    delivered: CheckCircle,
+    "in-transit": TruckIcon,
+    pending: Clock,
+    cancelled: X,
+  };
+  return { ...config, icon: iconMap[status] || Clock };
 };
 
 type SortField = "id" | "vehicleInfo" | "shipperInfo" | "pickupDate" | "dropOffDate" | "status" | "courierInfo";
@@ -153,15 +87,15 @@ export default function Loads() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [sortField, setSortField] = useState<SortField>("id");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [selectedLoad, setSelectedLoad] = useState<Load | null>(null);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
-  const [docsDialogOpen, setDocsDialogOpen] = useState(false);
+  const { sortField, sortDir, toggleSort } = useTableSort<SortField>("id");
+  const dialogs = useDialogManager<Load>();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [loads, setLoads] = useState<Load[]>(mockLoads);
+  const [loads, setLoads] = useState<Load[]>([]);
   const [newLoad, setNewLoad] = useState({ vehicleYear: "", vehicleMake: "", vehicleModel: "", vin: "", stockNumber: "", shipperInfo: "", pickupDate: "", dropOffDate: "", courierInfo: "" });
+
+  useEffect(() => {
+    fetchLoads().then(setLoads);
+  }, []);
 
   const filteredLoads = useMemo(() => {
     let result = loads.filter((load) => {
@@ -202,21 +136,9 @@ export default function Loads() {
     setSearchQuery("");
   };
 
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  };
-
   const totalLoads = loads.length;
   const alertsCount = loads.filter((l) => l.status === "pending" || l.status === "cancelled").length;
 
-  const handleView = (load: Load) => { setSelectedLoad(load); setViewDialogOpen(true); };
-  const handleHistory = (load: Load) => { setSelectedLoad(load); setHistoryDialogOpen(true); };
-  const handleDocs = (load: Load) => { setSelectedLoad(load); setDocsDialogOpen(true); };
 
   const SortableHead = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <TableHead
@@ -266,70 +188,15 @@ export default function Loads() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          {[
+        <StatsGrid
+          stats={[
             { label: "Total Listings", value: totalLoads, icon: Package, color: "primary", delay: 1 },
-            { label: "In Transit", value: mockLoads.filter((l) => l.status === "in-transit").length, icon: TruckIcon, color: "primary", delay: 2 },
-            { label: "Delivered", value: mockLoads.filter((l) => l.status === "delivered").length, icon: CheckCircle, color: "success", delay: 3 },
+            { label: "In Transit", value: loads.filter((l) => l.status === "in-transit").length, icon: TruckIcon, color: "primary", delay: 2 },
+            { label: "Delivered", value: loads.filter((l) => l.status === "delivered").length, icon: CheckCircle, color: "success", delay: 3 },
             { label: "Alerts", value: alertsCount, icon: AlertTriangle, color: "warning", delay: 4 },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className={cn(
-                "group relative overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-500 hover:-translate-y-1 cursor-pointer animate-fade-in",
-                `stagger-${stat.delay}`
-              )}
-            >
-              <div
-                className={cn(
-                  "absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none",
-                  stat.color === "primary" && "bg-gradient-to-br from-primary/10 to-transparent",
-                  stat.color === "success" && "bg-gradient-to-br from-success/10 to-transparent",
-                  stat.color === "warning" && "bg-gradient-to-br from-warning/10 to-transparent"
-                )}
-              />
-              <div className="relative flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
-                  <p
-                    className={cn(
-                      "text-3xl font-bold mt-1 transition-transform duration-300 group-hover:scale-110 origin-left",
-                      stat.color === "success" && "text-success",
-                      stat.color === "warning" && "text-warning"
-                    )}
-                  >
-                    {stat.value}
-                  </p>
-                </div>
-                <div
-                  className={cn(
-                    "rounded-2xl p-3 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6",
-                    stat.color === "primary" && "bg-primary/10",
-                    stat.color === "success" && "bg-success/10",
-                    stat.color === "warning" && "bg-warning/10"
-                  )}
-                >
-                  <stat.icon
-                    className={cn(
-                      "h-6 w-6",
-                      stat.color === "primary" && "text-primary",
-                      stat.color === "success" && "text-success",
-                      stat.color === "warning" && "text-warning"
-                    )}
-                  />
-                </div>
-              </div>
-              <div
-                className={cn(
-                  "absolute bottom-0 left-0 h-1 w-0 group-hover:w-full transition-all duration-500",
-                  stat.color === "primary" && "bg-gradient-to-r from-primary to-primary/50",
-                  stat.color === "success" && "bg-gradient-to-r from-success to-success/50",
-                  stat.color === "warning" && "bg-gradient-to-r from-warning to-warning/50"
-                )}
-              />
-            </div>
-          ))}
-        </div>
+          ]}
+          columns={4}
+        />
 
         {/* Table Section */}
         <Card className="overflow-hidden border-0 shadow-elevated bg-card/80 backdrop-blur-sm">
@@ -462,12 +329,12 @@ export default function Loads() {
                       </TableCell>
                       <TableCell>{load.courierInfo}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleDocs(load)}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => dialogs.open("docs", load)}>
                           <FileText className="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleHistory(load)}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => dialogs.open("history", load)}>
                           <History className="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </TableCell>
@@ -479,7 +346,7 @@ export default function Loads() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleView(load)}>
+                            <DropdownMenuItem onClick={() => dialogs.open("view", load)}>
                               <Eye className="h-4 w-4 mr-2" /> View Details
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => toast.info("Edit coming soon")}>
@@ -501,28 +368,28 @@ export default function Loads() {
         </Card>
 
         {/* View Dialog */}
-        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <Dialog open={dialogs.isOpen("view")} onOpenChange={dialogs.setOpen.bind(null, "view")}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Load Details — {selectedLoad?.id}</DialogTitle>
+              <DialogTitle>Load Details — {dialogs.selected?.id}</DialogTitle>
             </DialogHeader>
-            {selectedLoad && (
+            {dialogs.selected && (
               <div className="space-y-4 text-sm">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-muted-foreground text-xs">Vehicle</p>
-                    <p className="font-medium">{selectedLoad.vehicleYear} {selectedLoad.vehicleMake} {selectedLoad.vehicleModel}</p>
-                    <p className="text-xs text-muted-foreground mt-1">VIN: <span className="font-mono">{selectedLoad.vin}</span></p>
-                    <p className="text-xs text-muted-foreground">STK#: <span className="font-mono">{selectedLoad.stockNumber}</span></p>
+                    <p className="font-medium">{dialogs.selected.vehicleYear} {dialogs.selected.vehicleMake} {dialogs.selected.vehicleModel}</p>
+                    <p className="text-xs text-muted-foreground mt-1">VIN: <span className="font-mono">{dialogs.selected.vin}</span></p>
+                    <p className="text-xs text-muted-foreground">STK#: <span className="font-mono">{dialogs.selected.stockNumber}</span></p>
                   </div>
-                  <div><p className="text-muted-foreground text-xs">Shipper</p><p className="font-medium">{selectedLoad.shipperInfo}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Pickup</p><p className="font-medium">{selectedLoad.pickupDate}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Drop Off</p><p className="font-medium">{selectedLoad.dropOffDate}</p></div>
-                  <div><p className="text-muted-foreground text-xs">Courier</p><p className="font-medium">{selectedLoad.courierInfo}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Shipper</p><p className="font-medium">{dialogs.selected.shipperInfo}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Pickup</p><p className="font-medium">{dialogs.selected.pickupDate}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Drop Off</p><p className="font-medium">{dialogs.selected.dropOffDate}</p></div>
+                  <div><p className="text-muted-foreground text-xs">Courier</p><p className="font-medium">{dialogs.selected.courierInfo}</p></div>
                   <div>
                     <p className="text-muted-foreground text-xs">Status</p>
-                    <Badge variant="outline" className={cn("gap-1 mt-1", getStatusConfig(selectedLoad.status).className)}>
-                      {getStatusConfig(selectedLoad.status).label}
+                    <Badge variant="outline" className={cn("gap-1 mt-1", getStatusConfig(dialogs.selected.status).className)}>
+                      {getStatusConfig(dialogs.selected.status).label}
                     </Badge>
                   </div>
                 </div>
@@ -532,52 +399,22 @@ export default function Loads() {
         </Dialog>
 
         {/* History Dialog */}
-        <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>History — {selectedLoad?.id}</DialogTitle>
-            </DialogHeader>
-            {selectedLoad && (
-              <div className="space-y-3">
-                {selectedLoad.history.map((h, i) => (
-                  <div key={i} className="flex items-start gap-3 text-sm">
-                    <div className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
-                    <div>
-                      <p className="font-medium">{h.action}</p>
-                      <p className="text-xs text-muted-foreground">{h.date}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        <HistoryDialog
+          open={dialogs.isOpen("history")}
+          onOpenChange={dialogs.setOpen.bind(null, "history")}
+          entityName={dialogs.selected?.id || ""}
+          history={dialogs.selected?.history || []}
+        />
 
         {/* Docs Dialog */}
-        <Dialog open={docsDialogOpen} onOpenChange={setDocsDialogOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Documents — {selectedLoad?.id}</DialogTitle>
-            </DialogHeader>
-            {selectedLoad && (
-              <div className="space-y-2">
-                {selectedLoad.docs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No documents attached</p>
-                ) : (
-                  selectedLoad.docs.map((d, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                      <FileText className="h-4 w-4 text-primary" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{d.name}</p>
-                        <p className="text-xs text-muted-foreground">{d.type}</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        <DocumentsDialog
+          open={dialogs.isOpen("docs")}
+          onOpenChange={dialogs.setOpen.bind(null, "docs")}
+          entityName={dialogs.selected?.id || ""}
+          documents={dialogs.selected?.docs || []}
+          showUpload={false}
+        />
+
 
         {/* Add Vehicle Dialog */}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>

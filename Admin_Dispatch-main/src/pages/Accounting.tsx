@@ -1,16 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { Transaction, AccountingStats, fetchTransactions, fetchAccountingStats } from "@/services/accountingService";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { generateAccountingReport } from "@/utils/generateAccountingReport";
+import { getColorClasses, getAccountingStatusConfig } from "@/utils/styleHelpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  TrendingDown, 
-  CreditCard, 
-  ArrowUpRight, 
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  CreditCard,
+  ArrowUpRight,
   ArrowDownRight,
   FileText,
   Download,
@@ -45,174 +47,31 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Mock transaction data
-const transactions = [
-  {
-    id: "TXN-001",
-    date: "2024-01-15",
-    description: "Freight Payment - ABC Logistics",
-    type: "income",
-    amount: 4500.00,
-    status: "completed",
-    party: "ABC Logistics",
-    partyType: "shipper"
-  },
-  {
-    id: "TXN-002",
-    date: "2024-01-14",
-    description: "Carrier Payment - FastFreight Inc",
-    type: "expense",
-    amount: 3200.00,
-    status: "completed",
-    party: "FastFreight Inc",
-    partyType: "courier"
-  },
-  {
-    id: "TXN-003",
-    date: "2024-01-14",
-    description: "Freight Payment - Global Shipping Co",
-    type: "income",
-    amount: 6800.00,
-    status: "pending",
-    party: "Global Shipping Co",
-    partyType: "shipper"
-  },
-  {
-    id: "TXN-004",
-    date: "2024-01-13",
-    description: "Carrier Payment - Express Haulers",
-    type: "expense",
-    amount: 2100.00,
-    status: "completed",
-    party: "Express Haulers",
-    partyType: "courier"
-  },
-  {
-    id: "TXN-005",
-    date: "2024-01-12",
-    description: "Freight Payment - Metro Distributors",
-    type: "income",
-    amount: 5200.00,
-    status: "overdue",
-    party: "Metro Distributors",
-    partyType: "shipper"
-  },
-];
 
-const stats = [
-  {
-    title: "Total Revenue",
-    value: "$124,580",
-    change: "+12.5%",
-    isPositive: true,
-    icon: DollarSign,
-    color: "success",
-    description: "This month"
-  },
-  {
-    title: "Receivables",
-    value: "$45,230",
-    change: "+8.2%",
-    isPositive: true,
-    icon: TrendingUp,
-    color: "primary",
-    description: "Outstanding"
-  },
-  {
-    title: "Payables",
-    value: "$28,450",
-    change: "-5.1%",
-    isPositive: false,
-    icon: TrendingDown,
-    color: "warning",
-    description: "Due this week"
-  },
-  {
-    title: "Pending",
-    value: "$12,800",
-    change: "+3.4%",
-    isPositive: true,
-    icon: CreditCard,
-    color: "accent",
-    description: "Processing"
-  },
-];
 
 const getStatusConfig = (status: string) => {
-  switch (status) {
-    case "completed":
-      return { 
-        label: "Completed", 
-        icon: CheckCircle2, 
-        className: "bg-success/15 text-success border-success/20" 
-      };
-    case "pending":
-      return { 
-        label: "Pending", 
-        icon: Clock, 
-        className: "bg-warning/15 text-warning border-warning/20" 
-      };
-    case "overdue":
-      return { 
-        label: "Overdue", 
-        icon: AlertCircle, 
-        className: "bg-destructive/15 text-destructive border-destructive/20" 
-      };
-    default:
-      return { 
-        label: status, 
-        icon: Clock, 
-        className: "bg-muted text-muted-foreground" 
-      };
-  }
-};
-
-const getColorClasses = (color: string) => {
-  switch (color) {
-    case "success":
-      return {
-        bg: "bg-success/10",
-        text: "text-success",
-        gradient: "from-success/20 via-success/5 to-transparent",
-        border: "bg-success"
-      };
-    case "primary":
-      return {
-        bg: "bg-primary/10",
-        text: "text-primary",
-        gradient: "from-primary/20 via-primary/5 to-transparent",
-        border: "bg-primary"
-      };
-    case "warning":
-      return {
-        bg: "bg-warning/10",
-        text: "text-warning",
-        gradient: "from-warning/20 via-warning/5 to-transparent",
-        border: "bg-warning"
-      };
-    case "accent":
-      return {
-        bg: "bg-accent/10",
-        text: "text-accent",
-        gradient: "from-accent/20 via-accent/5 to-transparent",
-        border: "bg-accent"
-      };
-    default:
-      return {
-        bg: "bg-primary/10",
-        text: "text-primary",
-        gradient: "from-primary/20 via-primary/5 to-transparent",
-        border: "bg-primary"
-      };
-  }
+  const config = getAccountingStatusConfig(status);
+  const iconMap: Record<string, typeof CheckCircle2> = {
+    completed: CheckCircle2,
+    pending: Clock,
+    overdue: AlertCircle,
+  };
+  return { ...config, icon: iconMap[status] || Clock };
 };
 
 export default function Accounting() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stats, setStats] = useState<AccountingStats[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    fetchTransactions().then(setTransactions);
+    fetchAccountingStats().then(setStats);
+  }, []);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
@@ -258,7 +117,7 @@ export default function Accounting() {
             </div>
             <div className="flex items-center gap-3 animate-fade-in stagger-1">
               <Button variant="outline" size="sm" className="gap-2" onClick={() => {
-                const headers = ["ID","Date","Description","Type","Amount","Status","Party","Party Type"];
+                const headers = ["ID", "Date", "Description", "Type", "Amount", "Status", "Party", "Party Type"];
                 const rows = filteredTransactions.map(t => [t.id, t.date, t.description, t.type, t.amount.toFixed(2), t.status, t.party, t.partyType]);
                 const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
                 const blob = new Blob([csv], { type: "text/csv" });
@@ -292,10 +151,10 @@ export default function Accounting() {
               >
                 {/* Hover gradient overlay */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                
+
                 {/* Glow effect on hover */}
                 <div className="absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                
+
                 <div className="relative">
                   <div className="flex items-start justify-between">
                     <div className={`stat-icon ${colors.bg} transition-transform duration-300 group-hover:scale-110`}>
@@ -326,7 +185,7 @@ export default function Accounting() {
 
         {/* Transactions Section */}
         <Card className="overflow-hidden border bg-card/80 backdrop-blur-sm animate-fade-in stagger-2">
-           <CardHeader className="border-b bg-muted/30 space-y-4">
+          <CardHeader className="border-b bg-muted/30 space-y-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-xl">Recent Transactions</CardTitle>
@@ -352,63 +211,63 @@ export default function Accounting() {
                 )}
               </div>
             </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Date Range Filter */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className={`gap-2 ${dateFrom || dateTo ? 'border-primary text-primary' : ''}`}>
-                      <Calendar className="h-4 w-4" />
-                      {dateFrom || dateTo ? 'Date Set' : 'Date Range'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-72 p-4 space-y-3" align="end">
-                    <p className="text-sm font-medium text-foreground">Date Range</p>
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-xs text-muted-foreground">From</label>
-                        <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">To</label>
-                        <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Status Filter */}
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className={`h-9 w-[130px] text-sm ${statusFilter !== 'all' ? 'border-primary text-primary' : ''}`}>
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="overdue">Overdue</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Type Filter */}
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className={`h-9 w-[130px] text-sm ${typeFilter !== 'all' ? 'border-primary text-primary' : ''}`}>
-                    <SelectValue placeholder="Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="income">Income</SelectItem>
-                    <SelectItem value="expense">Expense</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Clear Filters */}
-                {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground hover:text-foreground">
-                    <X className="h-3.5 w-3.5" />
-                    Clear
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Date Range Filter */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className={`gap-2 ${dateFrom || dateTo ? 'border-primary text-primary' : ''}`}>
+                    <Calendar className="h-4 w-4" />
+                    {dateFrom || dateTo ? 'Date Set' : 'Date Range'}
                   </Button>
-                )}
-              </div>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-4 space-y-3" align="end">
+                  <p className="text-sm font-medium text-foreground">Date Range</p>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">From</label>
+                      <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">To</label>
+                      <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Status Filter */}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className={`h-9 w-[130px] text-sm ${statusFilter !== 'all' ? 'border-primary text-primary' : ''}`}>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Type Filter */}
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className={`h-9 w-[130px] text-sm ${typeFilter !== 'all' ? 'border-primary text-primary' : ''}`}>
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="income">Income</SelectItem>
+                  <SelectItem value="expense">Expense</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Clear Filters */}
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-border/50">
@@ -422,7 +281,7 @@ export default function Accounting() {
               {filteredTransactions.map((transaction, index) => {
                 const statusConfig = getStatusConfig(transaction.status);
                 const StatusIcon = statusConfig.icon;
-                
+
                 return (
                   <div
                     key={transaction.id}
@@ -430,11 +289,10 @@ export default function Accounting() {
                     style={{ animationDelay: `${(index + 5) * 50}ms` }}
                   >
                     {/* Transaction type indicator */}
-                    <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${
-                      transaction.type === 'income' 
-                        ? 'bg-success/10' 
-                        : 'bg-warning/10'
-                    }`}>
+                    <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${transaction.type === 'income'
+                      ? 'bg-success/10'
+                      : 'bg-warning/10'
+                      }`}>
                       {transaction.partyType === 'shipper' ? (
                         <Building2 className={`h-5 w-5 ${transaction.type === 'income' ? 'text-success' : 'text-warning'}`} />
                       ) : (
@@ -464,13 +322,12 @@ export default function Accounting() {
 
                     {/* Amount */}
                     <div className="text-right">
-                      <p className={`text-lg font-bold ${
-                        transaction.type === 'income' ? 'text-success' : 'text-warning'
-                      }`}>
+                      <p className={`text-lg font-bold ${transaction.type === 'income' ? 'text-success' : 'text-warning'
+                        }`}>
                         {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </p>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={`mt-1 gap-1 text-xs ${statusConfig.className}`}
                       >
                         <StatusIcon className="h-3 w-3" />

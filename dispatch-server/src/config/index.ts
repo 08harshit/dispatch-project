@@ -12,8 +12,11 @@ export const config = {
     },
 
     cors: {
-        origins: (process.env.CORS_ORIGINS || "http://localhost:5173")
-            .split(",")
-            .map((o) => o.trim()),
+        origins:
+            (process.env.NODE_ENV || "development") === "development"
+                ? true                       // allow ANY origin in dev
+                : (process.env.CORS_ORIGINS || "http://localhost:5173")
+                    .split(",")
+                    .map((o) => o.trim()),
     },
 };
