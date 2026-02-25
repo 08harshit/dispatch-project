@@ -32,7 +32,7 @@ import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddCourierForm, CourierFormData } from "@/components/forms/AddCourierForm";
 import { toast } from "sonner";
-import { fetchCouriers, fetchCourierStats, createCourier, CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
+import { fetchCouriers, fetchCourierStats, createCourier, toggleCourierStatus, deleteCourier, CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
 import type { FilterTab } from "@/types/common";
 import { StatsGrid, StatItem } from "@/components/common/StatsGrid";
 import { HistoryDialog } from "@/components/common/HistoryDialog";
@@ -129,10 +129,28 @@ export default function Couriers() {
 
 
 
-  const handleToggleStatus = (courier: Courier) => {
-    const newStatus = courier.status === "active" ? "inactive" : "active";
-    setCouriers(prev => prev.map(c => c.id === courier.id ? { ...c, status: newStatus } : c));
-    toast.success(`${courier.name} ${newStatus === "active" ? "activé" : "désactivé"}`);
+  const handleToggleStatus = async (courier: Courier) => {
+    try {
+      await toggleCourierStatus(courier.id);
+      const newStatus = courier.status === "active" ? "inactive" : "active";
+      toast.success(`${courier.name} status updated to ${newStatus}`);
+      loadData();
+    } catch (err: any) {
+      console.error("Failed to toggle status:", err);
+      toast.error(err.message || "Failed to toggle status");
+    }
+  };
+
+  const handleDeleteCourier = async (courier: Courier) => {
+    if (!confirm(`Are you sure you want to delete ${courier.name}?`)) return;
+    try {
+      await deleteCourier(courier.id);
+      toast.success(`${courier.name} deleted successfully`);
+      loadData();
+    } catch (err: any) {
+      console.error("Failed to delete courier:", err);
+      toast.error(err.message || "Failed to delete courier");
+    }
   };
 
   const handleVerifyFMCSA = (usdot: string) => {
@@ -464,7 +482,7 @@ export default function Couriers() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="my-2" />
                           <DropdownMenuItem
-                            onClick={() => toast.error(`${courier.name} deleted`)}
+                            onClick={() => handleDeleteCourier(courier)}
                             className="gap-3 rounded-lg text-destructive focus:text-destructive focus:bg-destructive/10"
                           >
                             <Trash2 className="h-4 w-4" />

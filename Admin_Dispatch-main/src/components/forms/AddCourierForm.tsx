@@ -55,9 +55,10 @@ interface AddCourierFormProps {
   onSuccess: () => void;
   initialData?: Partial<CourierFormData>;
   isEditing?: boolean;
+  editingId?: string;
 }
 
-export function AddCourierForm({ onSuccess, initialData, isEditing = false }: AddCourierFormProps) {
+export function AddCourierForm({ onSuccess, initialData, isEditing = false, editingId }: AddCourierFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<CourierFormData>({
     courierName: "",
@@ -111,9 +112,15 @@ export function AddCourierForm({ onSuccess, initialData, isEditing = false }: Ad
     setIsSubmitting(true);
 
     try {
-      const { createCourier } = await import("@/services/courierService");
-      await createCourier(formData as unknown as Record<string, string>);
-      toast.success(isEditing ? "Courier updated successfully!" : "Courier added successfully!");
+      if (isEditing && editingId) {
+        const { updateCourier } = await import("@/services/courierService");
+        await updateCourier(editingId, formData as unknown as Record<string, string>);
+        toast.success("Courier updated successfully!");
+      } else {
+        const { createCourier } = await import("@/services/courierService");
+        await createCourier(formData as unknown as Record<string, string>);
+        toast.success("Courier added successfully!");
+      }
       onSuccess();
     } catch (err: any) {
       console.error("Failed to save courier:", err);
