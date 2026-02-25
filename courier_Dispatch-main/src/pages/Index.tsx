@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { HomePage } from "@/pages/HomePage";
 import { LoadsPage } from "@/pages/LoadsPage";
+import { SavedLoadsPage } from "@/pages/SavedLoadsPage";
 import { AccountingPage } from "@/pages/AccountingPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import { CommunicationPage } from "@/pages/CommunicationPage";
@@ -28,6 +29,8 @@ const Index = () => {
         return <HomePage onNavigate={setActiveMenuItem} />;
       case "loads":
         return <LoadsPage />;
+      case "saved":
+        return <SavedLoadsPage />;
       case "accounting":
         return <AccountingPage />;
       case "communication":

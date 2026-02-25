@@ -45,3 +45,28 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         return res.status(401).json({ success: false, error: "Authentication failed" });
     }
 };
+
+/**
+ * Optional auth: when Authorization: Bearer <token> is present and valid, sets req.user.
+ * Does not fail when missing or invalid; routes can use req.user?.id for courier_id/shipper_id.
+ */
+export const optionalAuth = async (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return next();
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+        const { data, error } = await supabaseAdmin.auth.getUser(token);
+        if (!error && data?.user) {
+            req.user = {
+                id: data.user.id,
+                email: data.user.email || "",
+                role: data.user.user_metadata?.role,
+            };
+        }
+    } catch {
+        // ignore
+    }
+    next();
+};

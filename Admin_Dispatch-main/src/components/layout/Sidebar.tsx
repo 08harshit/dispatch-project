@@ -12,6 +12,8 @@ import {
   LayoutDashboard,
   PackageOpen,
   TicketCheck,
+  FileText,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,8 @@ const navigation = [
   { name: "Couriers", href: "/couriers", icon: Truck },
   { name: "Shippers", href: "/shippers", icon: Package },
   { name: "Loads", href: "/loads", icon: PackageOpen },
+  { name: "Contracts", href: "/contracts", icon: FileText },
+  { name: "Trips", href: "/trips", icon: MapPin },
   { name: "Accounting", href: "/accounting", icon: Calculator },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Tickets", href: "/tickets", icon: TicketCheck },

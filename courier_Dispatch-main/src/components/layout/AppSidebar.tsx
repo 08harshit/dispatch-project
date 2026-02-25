@@ -1,4 +1,4 @@
-import { Home, Truck, DollarSign, BarChart3, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { Home, Truck, DollarSign, BarChart3, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, Sparkles, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
@@ -12,6 +12,7 @@ interface AppSidebarProps {
 const menuItems = [
   { id: "home", label: "Home", icon: Home, gradient: "from-amber-400 to-amber-500", light: "bg-amber-50", text: "text-amber-600" },
   { id: "loads", label: "Loads", icon: Truck, gradient: "from-amber-500 to-orange-400", light: "bg-amber-50", text: "text-amber-600" },
+  { id: "saved", label: "Saved Loads", icon: Bookmark, gradient: "from-orange-400 to-rose-400", light: "bg-orange-50", text: "text-orange-600" },
   { id: "accounting", label: "Accounting", icon: DollarSign, gradient: "from-emerald-400 to-teal-400", light: "bg-emerald-50", text: "text-emerald-600" },
   { id: "communication", label: "Communication", icon: MessageCircle, gradient: "from-sky-400 to-blue-400", light: "bg-sky-50", text: "text-sky-600" },
   { id: "analytics", label: "Analytics", icon: BarChart3, gradient: "from-teal-400 to-emerald-400", light: "bg-emerald-50", text: "text-emerald-600" },

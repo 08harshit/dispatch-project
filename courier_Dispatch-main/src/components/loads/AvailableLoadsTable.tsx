@@ -24,6 +24,9 @@ interface AvailableLoadsTableProps {
   loading?: boolean;
   isBookmarked: (id: string) => boolean;
   onToggleBookmark: (id: string) => void;
+  /** When provided, Save button uses API saved_loads by leadId */
+  isSavedByLead?: (leadId: string) => boolean;
+  onToggleSaveByLead?: (leadId: string) => void;
 }
 
 const getPickupTypeBadge = (type: string) => {
@@ -50,7 +53,15 @@ export const AvailableLoadsTable = ({
   loading = false,
   isBookmarked,
   onToggleBookmark,
+  isSavedByLead,
+  onToggleSaveByLead,
 }: AvailableLoadsTableProps) => {
+  const useApiSave = isSavedByLead != null && onToggleSaveByLead != null;
+  const isSaved = (load: LoadNotification) => useApiSave ? isSavedByLead(load.leadId) : isBookmarked(load.id);
+  const onToggleSave = (load: LoadNotification) => {
+    if (useApiSave) onToggleSaveByLead(load.leadId);
+    else onToggleBookmark(load.id);
+  };
   const { isInRoute } = useRoutePlanner();
   const [bidDialogOpen, setBidDialogOpen] = useState(false);
   const [selectedLoad, setSelectedLoad] = useState<LoadNotification | null>(null);
@@ -284,16 +295,16 @@ export const AvailableLoadsTable = ({
                   {/* Contact Column */}
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => onToggleBookmark(load.id)}
+                      onClick={() => onToggleSave(load)}
                       className={cn(
                         "relative flex items-center gap-1.5 px-3 py-2 rounded-[1.2rem_1.8rem_1.2rem_1.8rem] transition-all duration-500 group/bm overflow-hidden border-2",
-                        isBookmarked(load.id)
+                        isSaved(load)
                           ? "bg-gradient-to-br from-amber-400 via-orange-400 to-rose-400 border-amber-300 shadow-lg shadow-amber-300/50 scale-[1.03] hover:shadow-xl hover:shadow-amber-400/60"
                           : "bg-gradient-to-br from-amber-100 via-orange-100 to-rose-100 border-amber-200 shadow-sm hover:from-amber-200 hover:via-orange-200 hover:to-rose-200 hover:shadow-md hover:shadow-amber-200/40 hover:scale-[1.03]"
                       )}
                     >
                       {/* Animated glow + shimmer when bookmarked */}
-                      {isBookmarked(load.id) && (
+                      {isSaved(load) && (
                         <>
                           <div className="absolute -inset-1 rounded-[1.4rem_2rem_1.4rem_2rem] bg-gradient-to-br from-amber-300 to-orange-400 animate-[glow-pulse_2s_ease-in-out_infinite] opacity-50 blur-md" />
                           <div className="absolute inset-0 rounded-[1.2rem_1.8rem_1.2rem_1.8rem] overflow-hidden">
@@ -303,15 +314,15 @@ export const AvailableLoadsTable = ({
                       )}
                       <Bookmark className={cn(
                         "h-[18px] w-[18px] relative z-10 transition-all duration-300",
-                        isBookmarked(load.id) 
+                        isSaved(load) 
                           ? "fill-white text-white drop-shadow-md" 
                           : "text-amber-500 group-hover/bm:scale-110 group-hover/bm:rotate-[-8deg]"
-                      )} strokeWidth={isBookmarked(load.id) ? 0 : 1.5} />
+                      )} strokeWidth={isSaved(load) ? 0 : 1.5} />
                       <span className={cn(
                         "relative z-10 text-[10px] font-bold uppercase tracking-wider transition-colors duration-300",
-                        isBookmarked(load.id) ? "text-white" : "text-amber-600"
+                        isSaved(load) ? "text-white" : "text-amber-600"
                       )}>
-                        {isBookmarked(load.id) ? "Saved" : "Save"}
+                        {isSaved(load) ? "Saved" : "Save"}
                       </span>
                     </button>
                     <span className="text-[9px] text-stone-400 uppercase tracking-wider font-bold mr-2">Contact</span>

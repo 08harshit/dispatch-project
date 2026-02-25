@@ -1,4 +1,6 @@
 import { Router, Request, Response } from "express";
+import { supabaseAdmin } from "../config/supabase";
+import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
 
@@ -6,36 +8,63 @@ const router = Router();
  * @swagger
  * tags:
  *   name: Accounting
- *   description: Financial stats and transactions
+ *   description: Financial stats and transactions (backed by invoices)
  */
 
 /**
  * @swagger
  * /accounting/stats:
  *   get:
- *     summary: Get financial overview stats
+ *     summary: Get financial overview stats from invoices
  *     tags: [Accounting]
  *     responses:
  *       200:
  *         description: Revenue, receivables, payables, pending
  */
-router.get("/stats", (_req: Request, res: Response) => {
-    res.json({
-        success: true,
-        data: {
-            totalRevenue: { value: "$0", change: "+0%", isPositive: true },
-            receivables: { value: "$0", change: "+0%", isPositive: true },
-            payables: { value: "$0", change: "+0%", isPositive: false },
-            pending: { value: "$0", change: "+0%", isPositive: true },
-        },
-    });
+router.get("/stats", async (_req: Request, res: Response) => {
+    try {
+        const { data: invoices, error } = await supabaseAdmin
+            .from("invoices")
+            .select("amount, generated_at");
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({
+                    success: true,
+                    data: {
+                        totalRevenue: { value: "$0", change: "+0%", isPositive: true },
+                        receivables: { value: "$0", change: "+0%", isPositive: true },
+                        payables: { value: "$0", change: "+0%", isPositive: false },
+                        pending: { value: "$0", change: "+0%", isPositive: true },
+                    },
+                });
+            }
+            console.error("Error fetching invoices for stats:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const total = (invoices || []).reduce((sum: number, i: any) => sum + (parseFloat(i.amount) || 0), 0);
+        const value = `$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        res.json({
+            success: true,
+            data: {
+                totalRevenue: { value, change: "+0%", isPositive: true },
+                receivables: { value: "$0", change: "+0%", isPositive: true },
+                payables: { value: "$0", change: "+0%", isPositive: false },
+                pending: { value, change: "+0%", isPositive: true },
+            },
+        });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /accounting/transactions:
  *   get:
- *     summary: List transactions
+ *     summary: List transactions (invoices as income)
  *     tags: [Accounting]
  *     parameters:
  *       - in: query
@@ -57,8 +86,43 @@ router.get("/stats", (_req: Request, res: Response) => {
  *       200:
  *         description: Transaction list
  */
-router.get("/transactions", (_req: Request, res: Response) => {
-    res.json({ success: true, data: [] });
+router.get("/transactions", async (req: Request, res: Response) => {
+    try {
+        const { dateFrom, dateTo, type } = req.query;
+        let query = supabaseAdmin
+            .from("invoices")
+            .select("id, amount, generated_at, courier_name, shipper_name, load_description, start_location, end_location")
+            .order("generated_at", { ascending: false });
+
+        if (dateFrom) query = query.gte("generated_at", `${dateFrom}T00:00:00.000Z`);
+        if (dateTo) query = query.lte("generated_at", `${dateTo}T23:59:59.999Z`);
+
+        const { data: invoices, error } = await query;
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, data: [] });
+            }
+            console.error("Error fetching transactions:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        let transactions = (invoices || []).map((i: any) => ({
+            id: i.id,
+            date: i.generated_at ? i.generated_at.split("T")[0] : "",
+            description: i.load_description || `${i.start_location || ""} to ${i.end_location || ""}`,
+            type: "income" as const,
+            amount: parseFloat(i.amount) || 0,
+            status: "completed" as const,
+            party: i.shipper_name || "",
+            partyType: "shipper" as const,
+        }));
+
+        if (type === "expense") transactions = [];
+        res.json({ success: true, data: transactions });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**

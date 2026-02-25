@@ -1,9 +1,9 @@
 // ============================================================
-// Accounting Service — mock data shell
-// Pattern: types → mock data → async functions (swap for API later)
+// Accounting Service — API-backed (invoices)
 // ============================================================
 
-import { LucideIcon } from "lucide-react";
+import { apiGet } from "./api";
+import type { LucideIcon } from "lucide-react";
 import { DollarSign, TrendingUp, TrendingDown, CreditCard } from "lucide-react";
 
 export interface Transaction {
@@ -27,108 +27,33 @@ export interface AccountingStats {
     description: string;
 }
 
-// --- Mock Data (will be replaced by API responses) ---
-
-const mockTransactions: Transaction[] = [
-    {
-        id: "TXN-001",
-        date: "2024-01-15",
-        description: "Freight Payment - ABC Logistics",
-        type: "income",
-        amount: 4500.0,
-        status: "completed",
-        party: "ABC Logistics",
-        partyType: "shipper",
-    },
-    {
-        id: "TXN-002",
-        date: "2024-01-14",
-        description: "Carrier Payment - FastFreight Inc",
-        type: "expense",
-        amount: 3200.0,
-        status: "completed",
-        party: "FastFreight Inc",
-        partyType: "courier",
-    },
-    {
-        id: "TXN-003",
-        date: "2024-01-14",
-        description: "Freight Payment - Global Shipping Co",
-        type: "income",
-        amount: 6800.0,
-        status: "pending",
-        party: "Global Shipping Co",
-        partyType: "shipper",
-    },
-    {
-        id: "TXN-004",
-        date: "2024-01-13",
-        description: "Carrier Payment - Express Haulers",
-        type: "expense",
-        amount: 2100.0,
-        status: "completed",
-        party: "Express Haulers",
-        partyType: "courier",
-    },
-    {
-        id: "TXN-005",
-        date: "2024-01-12",
-        description: "Freight Payment - Metro Distributors",
-        type: "income",
-        amount: 5200.0,
-        status: "overdue",
-        party: "Metro Distributors",
-        partyType: "shipper",
-    },
-];
-
-const mockStats: AccountingStats[] = [
-    {
-        title: "Total Revenue",
-        value: "$124,580",
-        change: "+12.5%",
-        isPositive: true,
-        icon: DollarSign,
-        color: "success",
-        description: "This month",
-    },
-    {
-        title: "Receivables",
-        value: "$45,230",
-        change: "+8.2%",
-        isPositive: true,
-        icon: TrendingUp,
-        color: "primary",
-        description: "Outstanding",
-    },
-    {
-        title: "Payables",
-        value: "$28,450",
-        change: "-5.1%",
-        isPositive: false,
-        icon: TrendingDown,
-        color: "warning",
-        description: "Due this week",
-    },
-    {
-        title: "Pending",
-        value: "$12,800",
-        change: "+3.4%",
-        isPositive: true,
-        icon: CreditCard,
-        color: "accent",
-        description: "Processing",
-    },
-];
-
-// --- Async service functions (mock → API ready) ---
+interface ApiStats {
+    totalRevenue: { value: string; change: string; isPositive: boolean };
+    receivables: { value: string; change: string; isPositive: boolean };
+    payables: { value: string; change: string; isPositive: boolean };
+    pending: { value: string; change: string; isPositive: boolean };
+}
 
 export async function fetchTransactions(): Promise<Transaction[]> {
-    // TODO: replace with apiGet<Transaction[]>("/accounting/transactions")
-    return Promise.resolve(mockTransactions);
+    const res = await apiGet<Transaction[]>("/accounting/transactions");
+    return res.data ?? [];
 }
 
 export async function fetchAccountingStats(): Promise<AccountingStats[]> {
-    // TODO: replace with apiGet<AccountingStats[]>("/accounting/stats")
-    return Promise.resolve(mockStats);
+    const res = await apiGet<ApiStats>("/accounting/stats");
+    const data = res.data;
+    if (!data || typeof data !== "object") {
+        return [
+            { title: "Total Revenue", value: "$0", change: "+0%", isPositive: true, icon: DollarSign, color: "success", description: "This month" },
+            { title: "Receivables", value: "$0", change: "+0%", isPositive: true, icon: TrendingUp, color: "primary", description: "Outstanding" },
+            { title: "Payables", value: "$0", change: "+0%", isPositive: false, icon: TrendingDown, color: "warning", description: "Due this week" },
+            { title: "Pending", value: "$0", change: "+0%", isPositive: true, icon: CreditCard, color: "accent", description: "Processing" },
+        ];
+    }
+    return [
+        { title: "Total Revenue", value: data.totalRevenue?.value ?? "$0", change: data.totalRevenue?.change ?? "+0%", isPositive: data.totalRevenue?.isPositive ?? true, icon: DollarSign, color: "success", description: "This month" },
+        { title: "Receivables", value: data.receivables?.value ?? "$0", change: data.receivables?.change ?? "+0%", isPositive: data.receivables?.isPositive ?? true, icon: TrendingUp, color: "primary", description: "Outstanding" },
+        { title: "Payables", value: data.payables?.value ?? "$0", change: data.payables?.change ?? "+0%", isPositive: data.payables?.isPositive ?? false, icon: TrendingDown, color: "warning", description: "Due this week" },
+        { title: "Pending", value: data.pending?.value ?? "$0", change: data.pending?.change ?? "+0%", isPositive: data.pending?.isPositive ?? true, icon: CreditCard, color: "accent", description: "Processing" },
+    ];
 }

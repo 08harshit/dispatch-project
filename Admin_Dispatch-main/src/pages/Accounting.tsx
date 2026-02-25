@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Transaction, AccountingStats, fetchTransactions, fetchAccountingStats } from "@/services/accountingService";
+import { fetchInvoice } from "@/services/invoiceService";
+import { downloadInvoiceAsHtml } from "@/utils/generateInvoiceHtml";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { generateAccountingReport } from "@/utils/generateAccountingReport";
 import { getColorClasses, getAccountingStatusConfig } from "@/utils/styleHelpers";
@@ -28,6 +30,7 @@ import {
   AlertCircle,
   X
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -348,7 +351,18 @@ export default function Accounting() {
                             <Eye className="h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="gap-2">
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onClick={async () => {
+                              try {
+                                const inv = await fetchInvoice(transaction.id);
+                                if (inv) downloadInvoiceAsHtml(inv);
+                                else toast.error("Invoice not found");
+                              } catch {
+                                toast.error("Failed to load invoice");
+                              }
+                            }}
+                          >
                             <FileText className="h-4 w-4" />
                             Download Invoice
                           </DropdownMenuItem>

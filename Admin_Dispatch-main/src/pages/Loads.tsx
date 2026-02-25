@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { getLoadStatusConfig } from "@/utils/styleHelpers";
-import { Load, fetchLoads } from "@/services/loadService";
+import { Load, fetchLoads, fetchLoadStats } from "@/services/loadService";
 import { useDialogManager } from "@/hooks/useDialogManager";
 import { useTableSort } from "@/hooks/useTableSort";
 import { StatsGrid } from "@/components/common/StatsGrid";
@@ -91,10 +91,21 @@ export default function Loads() {
   const dialogs = useDialogManager<Load>();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [loads, setLoads] = useState<Load[]>([]);
+  const [stats, setStats] = useState({ total: 0, inTransit: 0, delivered: 0, pending: 0, cancelled: 0, alerts: 0 });
+  const [loading, setLoading] = useState(true);
   const [newLoad, setNewLoad] = useState({ vehicleYear: "", vehicleMake: "", vehicleModel: "", vin: "", stockNumber: "", shipperInfo: "", pickupDate: "", dropOffDate: "", courierInfo: "" });
 
   useEffect(() => {
-    fetchLoads().then(setLoads);
+    setLoading(true);
+    const statusParam = statusFilter !== "all" ? statusFilter : undefined;
+    fetchLoads({ status: statusParam, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+      .then(setLoads)
+      .catch(() => setLoads([]))
+      .finally(() => setLoading(false));
+  }, [statusFilter, dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetchLoadStats().then(setStats).catch(() => {});
   }, []);
 
   const filteredLoads = useMemo(() => {
@@ -136,8 +147,8 @@ export default function Loads() {
     setSearchQuery("");
   };
 
-  const totalLoads = loads.length;
-  const alertsCount = loads.filter((l) => l.status === "pending" || l.status === "cancelled").length;
+  const totalLoads = stats.total;
+  const alertsCount = stats.alerts;
 
 
   const SortableHead = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
@@ -176,7 +187,7 @@ export default function Loads() {
                 Manage and track all loads
                 <span className="inline-flex items-center gap-1 text-xs bg-success/10 text-success px-2 py-0.5 rounded-full">
                   <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-                  {loads.filter((l) => l.status === "delivered").length} delivered
+                  {stats.delivered} delivered
                 </span>
               </p>
             </div>
@@ -191,8 +202,8 @@ export default function Loads() {
         <StatsGrid
           stats={[
             { label: "Total Listings", value: totalLoads, icon: Package, color: "primary", delay: 1 },
-            { label: "In Transit", value: loads.filter((l) => l.status === "in-transit").length, icon: TruckIcon, color: "primary", delay: 2 },
-            { label: "Delivered", value: loads.filter((l) => l.status === "delivered").length, icon: CheckCircle, color: "success", delay: 3 },
+            { label: "In Transit", value: stats.inTransit, icon: TruckIcon, color: "primary", delay: 2 },
+            { label: "Delivered", value: stats.delivered, icon: CheckCircle, color: "success", delay: 3 },
             { label: "Alerts", value: alertsCount, icon: AlertTriangle, color: "warning", delay: 4 },
           ]}
           columns={4}
@@ -286,7 +297,14 @@ export default function Loads() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLoads.length === 0 && (
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                      Loading loads...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && filteredLoads.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                       <Package className="h-8 w-8 mx-auto mb-3 opacity-50" />
@@ -297,7 +315,7 @@ export default function Loads() {
                     </TableCell>
                   </TableRow>
                 )}
-                {filteredLoads.map((load, index) => {
+                {!loading && filteredLoads.map((load, index) => {
                   const statusConfig = getStatusConfig(load.status);
                   const StatusIcon = statusConfig.icon;
                   return (
@@ -306,7 +324,7 @@ export default function Loads() {
                       className="group hover:bg-primary/5 transition-all duration-200 animate-fade-in"
                       style={{ animationDelay: `${index * 40}ms` }}
                     >
-                      <TableCell className="font-semibold text-primary">{load.id}</TableCell>
+                      <TableCell className="font-semibold text-primary">{load.stockNumber || load.id.slice(0, 8)}</TableCell>
                       <TableCell className="min-w-[180px]">
                         <div>
                           <p className="font-semibold text-foreground">{load.vehicleYear} {load.vehicleMake} {load.vehicleModel}</p>
