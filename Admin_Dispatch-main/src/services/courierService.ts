@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "./api";
 
 // --- Types matching server response shape ---
 
@@ -59,4 +59,21 @@ export async function fetchCourierStats(): Promise<CourierStats> {
 export async function createCourier(formData: Record<string, string>): Promise<{ id: string }> {
     const res = await apiPost<{ id: string }>("/couriers", formData);
     return res.data;
+}
+
+export async function updateCourier(id: string, formData: Record<string, string>): Promise<void> {
+    await apiPut<void>(`/couriers/${id}`, formData);
+}
+
+export async function toggleCourierStatus(id: string): Promise<{ status: string }> {
+    const res = await apiPatch<{ status: string }>(`/couriers/${id}/status`);
+    return res.data;
+}
+
+export async function deleteCourier(id: string): Promise<void> {
+    await apiDelete<void>(`/couriers/${id}`);
+}
+
+export async function setCourierPassword(id: string, password: string): Promise<void> {
+    await apiPost<void>(`/couriers/${id}/password`, { password });
 }
