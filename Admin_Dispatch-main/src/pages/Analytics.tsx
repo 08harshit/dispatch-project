@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { getColorClasses, getPerformanceStatusConfig } from "@/utils/styleHelpers";
 import {
@@ -57,8 +57,7 @@ export default function Analytics() {
   const [deliveryTrendsData, setDeliveryTrendsData] = useState<Record<DateRange, DeliveryTrendItem[]>>({} as Record<DateRange, DeliveryTrendItem[]>);
   const [courierPerformance, setCourierPerformance] = useState<CourierPerformanceItem[]>([]);
 
-  // Load data from services
-  useState(() => {
+  useEffect(() => {
     const ranges: DateRange[] = ["7days", "14days", "30days", "90days"];
     const loadAll = async () => {
       const statsEntries = await Promise.all(
@@ -72,7 +71,7 @@ export default function Analytics() {
       setCourierPerformance(await fetchCourierPerformance());
     };
     loadAll();
-  });
+  }, []);
 
   const currentStats = statsData[dateRange] || [];
   const currentDeliveryTrends = deliveryTrendsData[dateRange] || [];

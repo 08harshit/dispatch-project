@@ -1,6 +1,26 @@
 import { Router, Request, Response } from "express";
+import { supabaseAdmin } from "../config/supabase";
+import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
+
+function mapTicket(row: Record<string, unknown>, comments: Record<string, unknown>[] = []): Record<string, unknown> {
+    return {
+        id: row.id,
+        title: row.title,
+        description: row.description ?? "",
+        priority: row.priority ?? "medium",
+        status: row.status ?? "open",
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        comments: comments.map((c) => ({
+            id: c.id,
+            author: c.author ?? "",
+            text: c.text ?? "",
+            date: c.created_at ? new Date(String(c.created_at)).toISOString().slice(0, 10) : "",
+        })),
+    };
+}
 
 /**
  * @swagger
@@ -15,38 +35,47 @@ const router = Router();
  *   get:
  *     summary: List all tickets
  *     tags: [Tickets]
- *     parameters:
- *       - in: query
- *         name: search
- *         schema: { type: string }
- *       - in: query
- *         name: status
- *         schema: { type: string, enum: [open, in-progress, resolved, closed] }
- *       - in: query
- *         name: priority
- *         schema: { type: string, enum: [low, medium, high, urgent] }
- *       - in: query
- *         name: sortField
- *         schema: { type: string, enum: [id, title, priority, status, createdAt] }
- *       - in: query
- *         name: sortDir
- *         schema: { type: string, enum: [asc, desc] }
- *     responses:
- *       200:
- *         description: List of tickets
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/SuccessResponse'
- *                 - properties:
- *                     data:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/Ticket'
  */
-router.get("/", (_req: Request, res: Response) => {
-    res.json({ success: true, data: [], message: "List tickets" });
+router.get("/", async (req: Request, res: Response) => {
+    try {
+        const { search, status, priority, sortField, sortDir } = req.query;
+        let query = supabaseAdmin.from("tickets").select("*");
+        if (status) query = query.eq("status", status as string);
+        if (priority) query = query.eq("priority", priority as string);
+        if (search && String(search).trim()) {
+            const term = `%${String(search).trim()}%`;
+            query = query.or(`title.ilike.${term},description.ilike.${term}`);
+        }
+        const orderBy = (sortField as string) === "createdAt" ? "created_at" : (sortField as string) || "created_at";
+        query = query.order(orderBy, { ascending: (sortDir as string) !== "desc" });
+
+        const { data: rows, error } = await query;
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, data: [] });
+            }
+            console.error("Error fetching tickets:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const list = rows || [];
+        const ids = list.map((r: { id: string }) => r.id);
+        const { data: commentRows } = ids.length
+            ? await supabaseAdmin.from("ticket_comments").select("*").in("ticket_id", ids).order("created_at", { ascending: true })
+            : { data: [] };
+        const commentsByTicket = new Map<string, Record<string, unknown>[]>();
+        for (const c of commentRows || []) {
+            const tid = (c as { ticket_id: string }).ticket_id;
+            if (!commentsByTicket.has(tid)) commentsByTicket.set(tid, []);
+            commentsByTicket.get(tid)!.push(c);
+        }
+        const data = list.map((r: Record<string, unknown>) => mapTicket(r, commentsByTicket.get(String(r.id)) || []));
+        res.json({ success: true, data });
+    } catch (err: unknown) {
+        console.error("Error in GET /tickets:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
 /**
@@ -55,12 +84,36 @@ router.get("/", (_req: Request, res: Response) => {
  *   get:
  *     summary: Get ticket statistics
  *     tags: [Tickets]
- *     responses:
- *       200:
- *         description: Ticket stats (open, in-progress, resolved, high-priority counts)
  */
-router.get("/stats", (_req: Request, res: Response) => {
-    res.json({ success: true, data: { open: 0, inProgress: 0, resolved: 0, closed: 0, highPriority: 0 } });
+router.get("/stats", async (_req: Request, res: Response) => {
+    try {
+        const { data: rows, error } = await supabaseAdmin.from("tickets").select("status, priority");
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({
+                    success: true,
+                    data: { open: 0, inProgress: 0, resolved: 0, closed: 0, highPriority: 0 },
+                });
+            }
+            console.error("Error fetching ticket stats:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const list = rows || [];
+        const open = list.filter((r: { status?: string }) => r.status === "open").length;
+        const inProgress = list.filter((r: { status?: string }) => r.status === "in-progress").length;
+        const resolved = list.filter((r: { status?: string }) => r.status === "resolved").length;
+        const closed = list.filter((r: { status?: string }) => r.status === "closed").length;
+        const highPriority = list.filter((r: { priority?: string }) => r.priority === "urgent" || r.priority === "high").length;
+        res.json({
+            success: true,
+            data: { open, inProgress, resolved, closed, highPriority, urgent: highPriority },
+        });
+    } catch (err: unknown) {
+        console.error("Error in GET /tickets/stats:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
 /**
@@ -69,165 +122,172 @@ router.get("/stats", (_req: Request, res: Response) => {
  *   get:
  *     summary: Get a single ticket with comments
  *     tags: [Tickets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Ticket details with comments
  */
-router.get("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Get ticket ${req.params.id}` });
+router.get("/:id", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { data: row, error } = await supabaseAdmin.from("tickets").select("*").eq("id", id).single();
+
+        if (error) {
+            if (isMissingTableError(error) || error.code === "PGRST116") {
+                return res.status(404).json({ success: false, error: "Ticket not found" });
+            }
+            console.error("Error fetching ticket:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        if (!row) {
+            return res.status(404).json({ success: false, error: "Ticket not found" });
+        }
+
+        const { data: commentRows } = await supabaseAdmin
+            .from("ticket_comments")
+            .select("*")
+            .eq("ticket_id", id)
+            .order("created_at", { ascending: true });
+        res.json({ success: true, data: mapTicket(row as Record<string, unknown>, commentRows || []) });
+    } catch (err: unknown) {
+        console.error("Error in GET /tickets/:id:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
-/**
- * @swagger
- * /tickets:
- *   post:
- *     summary: Create a new ticket
- *     tags: [Tickets]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [title, description, priority]
- *             properties:
- *               title: { type: string, example: "Update courier payment schedule" }
- *               description: { type: string }
- *               priority: { type: string, enum: [low, medium, high, urgent] }
- *     responses:
- *       200:
- *         description: Ticket created
- */
-router.post("/", (_req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: "Ticket created" });
+router.post("/", async (req: Request, res: Response) => {
+    try {
+        const { title, description, priority } = req.body || {};
+        if (!title || typeof title !== "string") {
+            return res.status(400).json({ success: false, error: "title is required" });
+        }
+        const { data: row, error } = await supabaseAdmin
+            .from("tickets")
+            .insert({
+                title: String(title).trim(),
+                description: description != null ? String(description) : null,
+                priority: ["low", "medium", "high", "urgent"].includes(priority) ? priority : "medium",
+            })
+            .select("*")
+            .single();
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.status(503).json({ success: false, error: "Tickets table not available" });
+            }
+            console.error("Error creating ticket:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        res.status(201).json({ success: true, data: mapTicket(row as Record<string, unknown>, []) });
+    } catch (err: unknown) {
+        console.error("Error in POST /tickets:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
-/**
- * @swagger
- * /tickets/{id}:
- *   put:
- *     summary: Update a ticket
- *     tags: [Tickets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Ticket'
- *     responses:
- *       200:
- *         description: Ticket updated
- */
-router.put("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Ticket ${req.params.id} updated` });
+router.put("/:id", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { title, description, priority, status } = req.body || {};
+        const updates: Record<string, unknown> = {};
+        if (typeof title === "string") updates.title = title.trim();
+        if (description !== undefined) updates.description = description;
+        if (["low", "medium", "high", "urgent"].includes(priority)) updates.priority = priority;
+        if (["open", "in-progress", "resolved", "closed"].includes(status)) updates.status = status;
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ success: false, error: "No valid fields to update" });
+        }
+        const { data: row, error } = await supabaseAdmin.from("tickets").update(updates).eq("id", id).select("*").single();
+
+        if (error) {
+            if (isMissingTableError(error) || error.code === "PGRST116") {
+                return res.status(404).json({ success: false, error: "Ticket not found" });
+            }
+            console.error("Error updating ticket:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        if (!row) return res.status(404).json({ success: false, error: "Ticket not found" });
+        const { data: commentRows } = await supabaseAdmin.from("ticket_comments").select("*").eq("ticket_id", id).order("created_at", { ascending: true });
+        res.json({ success: true, data: mapTicket(row as Record<string, unknown>, commentRows || []) });
+    } catch (err: unknown) {
+        console.error("Error in PUT /tickets/:id:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
-/**
- * @swagger
- * /tickets/{id}/status:
- *   patch:
- *     summary: Update ticket status
- *     tags: [Tickets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [open, in-progress, resolved, closed]
- *     responses:
- *       200:
- *         description: Status updated
- */
-router.patch("/:id/status", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Ticket ${req.params.id} status updated` });
+router.patch("/:id/status", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body || {};
+        if (!["open", "in-progress", "resolved", "closed"].includes(status)) {
+            return res.status(400).json({ success: false, error: "Invalid status" });
+        }
+        const { data: row, error } = await supabaseAdmin.from("tickets").update({ status }).eq("id", id).select("*").single();
+
+        if (error) {
+            if (isMissingTableError(error) || error.code === "PGRST116") {
+                return res.status(404).json({ success: false, error: "Ticket not found" });
+            }
+            console.error("Error updating ticket status:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        if (!row) return res.status(404).json({ success: false, error: "Ticket not found" });
+        const { data: commentRows } = await supabaseAdmin.from("ticket_comments").select("*").eq("ticket_id", id).order("created_at", { ascending: true });
+        res.json({ success: true, data: mapTicket(row as Record<string, unknown>, commentRows || []) });
+    } catch (err: unknown) {
+        console.error("Error in PATCH /tickets/:id/status:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
-/**
- * @swagger
- * /tickets/{id}:
- *   delete:
- *     summary: Delete a ticket
- *     tags: [Tickets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Ticket deleted
- */
-router.delete("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Ticket ${req.params.id} deleted` });
+router.delete("/:id", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { error } = await supabaseAdmin.from("tickets").delete().eq("id", id);
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, message: "Ticket deleted" });
+            }
+            console.error("Error deleting ticket:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        res.json({ success: true, message: "Ticket deleted" });
+    } catch (err: unknown) {
+        console.error("Error in DELETE /tickets/:id:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
-/**
- * @swagger
- * /tickets/{id}/comments:
- *   get:
- *     summary: Get ticket comments
- *     tags: [Tickets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Comment list
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/SuccessResponse'
- *                 - properties:
- *                     data:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/Comment'
- *   post:
- *     summary: Add a comment to a ticket
- *     tags: [Tickets]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [text]
- *             properties:
- *               text: { type: string, example: "Checked with the courier, still pending." }
- *     responses:
- *       200:
- *         description: Comment added
- */
-router.post("/:id/comments", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Comment added to ticket ${req.params.id}` });
+router.post("/:id/comments", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { text, author } = req.body || {};
+        if (!text || typeof text !== "string" || !text.trim()) {
+            return res.status(400).json({ success: false, error: "text is required" });
+        }
+        const { data: comment, error } = await supabaseAdmin
+            .from("ticket_comments")
+            .insert({ ticket_id: id, author: author ? String(author) : "Admin", text: text.trim() })
+            .select("*")
+            .single();
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.status(503).json({ success: false, error: "Tickets table not available" });
+            }
+            console.error("Error adding comment:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        res.status(201).json({
+            success: true,
+            data: {
+                id: comment?.id,
+                author: comment?.author ?? "Admin",
+                text: comment?.text ?? "",
+                date: comment?.created_at ? new Date(String(comment.created_at)).toISOString().slice(0, 10) : "",
+            },
+        });
+    } catch (err: unknown) {
+        console.error("Error in POST /tickets/:id/comments:", err);
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
 });
 
 export default router;

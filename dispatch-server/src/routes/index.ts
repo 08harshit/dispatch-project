@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { authenticate } from "../middleware/auth";
 import courierRoutes from "./couriers";
 import shipperRoutes from "./shippers";
 import loadRoutes from "./loads";
@@ -14,7 +15,7 @@ import savedLoadsRoutes from "./saved-loads";
 
 const router = Router();
 
-// Health check
+// Health check (no auth)
 router.get("/", (_req: Request, res: Response) => {
     res.json({
         success: true,
@@ -24,7 +25,8 @@ router.get("/", (_req: Request, res: Response) => {
     });
 });
 
-// Module routes
+// Protected API routes
+router.use(authenticate);
 router.use("/couriers", courierRoutes);
 router.use("/shippers", shipperRoutes);
 router.use("/loads", loadRoutes);

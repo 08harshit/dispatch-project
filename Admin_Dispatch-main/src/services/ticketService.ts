@@ -1,7 +1,8 @@
 // ============================================================
-// Ticket Service — mock data shell
-// Pattern: types → mock data → async functions (swap for API later)
+// Ticket Service — API-backed
 // ============================================================
+
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "./api";
 
 export type Priority = "low" | "medium" | "high" | "urgent";
 export type TicketStatus = "open" | "in-progress" | "resolved" | "closed";
@@ -124,13 +125,16 @@ const mockTickets: Ticket[] = [
     },
 ];
 
-// --- Async service functions (mock → API ready) ---
-
-export async function fetchTickets(
-    _filters: TicketFilters = {}
-): Promise<Ticket[]> {
-    // TODO: replace with apiGet<Ticket[]>(`/tickets?${params}`)
-    return Promise.resolve(mockTickets);
+export async function fetchTickets(filters: TicketFilters = {}): Promise<Ticket[]> {
+    const params = new URLSearchParams();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.status) params.set("status", filters.status);
+    if (filters.priority) params.set("priority", filters.priority);
+    const q = params.toString();
+    const path = q ? `/tickets?${q}` : "/tickets";
+    const res = await apiGet<Ticket[]>(path);
+    if (!res.success || !Array.isArray(res.data)) return [];
+    return res.data;
 }
 
 export async function fetchTicketStats(): Promise<{
@@ -140,15 +144,35 @@ export async function fetchTicketStats(): Promise<{
     closed: number;
     urgent: number;
 }> {
-    // TODO: replace with apiGet("/tickets/stats")
-    const open = mockTickets.filter((t) => t.status === "open").length;
-    const inProgress = mockTickets.filter(
-        (t) => t.status === "in-progress"
-    ).length;
-    const resolved = mockTickets.filter((t) => t.status === "resolved").length;
-    const closed = mockTickets.filter((t) => t.status === "closed").length;
-    const urgent = mockTickets.filter(
-        (t) => t.priority === "urgent" || t.priority === "high"
-    ).length;
-    return Promise.resolve({ open, inProgress, resolved, closed, urgent });
+    const res = await apiGet<{ open: number; inProgress: number; resolved: number; closed: number; highPriority: number; urgent?: number }>("/tickets/stats");
+    if (!res.success || !res.data) {
+        return { open: 0, inProgress: 0, resolved: 0, closed: 0, urgent: 0 };
+    }
+    return {
+        open: res.data.open,
+        inProgress: res.data.inProgress,
+        resolved: res.data.resolved,
+        closed: res.data.closed,
+        urgent: res.data.urgent ?? res.data.highPriority ?? 0,
+    };
+}
+
+export async function createTicket(payload: { title: string; description: string; priority: Priority }): Promise<Ticket | null> {
+    const res = await apiPost<Ticket>("/tickets", payload);
+    return res.success && res.data ? res.data : null;
+}
+
+export async function updateTicketStatus(ticketId: string, status: TicketStatus): Promise<Ticket | null> {
+    const res = await apiPatch<Ticket>(`/tickets/${ticketId}/status`, { status });
+    return res.success && res.data ? res.data : null;
+}
+
+export async function addTicketComment(ticketId: string, text: string, author?: string): Promise<TicketComment | null> {
+    const res = await apiPost<{ id: string; author: string; text: string; date: string }>(`/tickets/${ticketId}/comments`, { text, author });
+    return res.success && res.data ? { id: res.data.id, author: res.data.author, text: res.data.text, date: res.data.date } : null;
+}
+
+export async function deleteTicket(ticketId: string): Promise<boolean> {
+    const res = await apiDelete<unknown>(`/tickets/${ticketId}`);
+    return res.success;
 }

@@ -38,7 +38,12 @@ const entityTypeStyles = {
   shipper: "bg-accent/10 text-accent border-accent/20",
 };
 
-export function RecentActivityTable() {
+interface RecentActivityTableProps {
+  activities?: ActivityItem[];
+}
+
+export function RecentActivityTable({ activities }: RecentActivityTableProps) {
+  const list = activities ?? mockActivities;
   return (
     <Card className="animate-fade-in overflow-hidden" style={{ animationDelay: "200ms" }}>
       <CardHeader className="pb-3 border-b border-border/50">
@@ -60,7 +65,7 @@ export function RecentActivityTable() {
               </tr>
             </thead>
             <tbody>
-              {mockActivities.map((activity, index) => (
+              {list.map((activity, index) => (
                 <tr 
                   key={activity.id} 
                   className="animate-fade-in cursor-pointer"

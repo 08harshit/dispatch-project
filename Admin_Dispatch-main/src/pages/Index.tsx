@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { fetchDashboardStats, fetchRecentActivity, type DashboardStats, type RecentActivityItem } from "@/services/dashboardService";
 
 const alerts = [
   {
@@ -80,8 +81,15 @@ const alertStyles = {
   },
 };
 const Index = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
   const [notifications, setNotifications] = useState(alerts);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchDashboardStats().then(setStats).catch(() => setStats(null));
+    fetchRecentActivity().then(setRecentActivity).catch(() => setRecentActivity([]));
+  }, []);
 
   const handleNotificationClick = (alert: typeof alerts[0]) => {
     setReadIds((prev) => new Set(prev).add(alert.id));
@@ -203,28 +211,28 @@ const Index = () => {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total Couriers"
-            value={48}
+            value={stats?.totalCouriers ?? 0}
             icon={Truck}
             trend={{ value: 12, isPositive: true }}
             delay={100}
           />
           <StatCard
             title="Total Shippers"
-            value={156}
+            value={stats?.totalShippers ?? 0}
             icon={Package}
             trend={{ value: 8, isPositive: true }}
             delay={150}
           />
           <StatCard
             title="Total Transactions"
-            value="1,234"
+            value={stats?.totalTransactions ?? 0}
             icon={ArrowLeftRight}
             trend={{ value: 23, isPositive: true }}
             delay={200}
           />
           <StatCard
             title="Active Alerts"
-            value={7}
+            value={stats?.activeAlerts ?? 0}
             icon={AlertTriangle}
             variant="warning"
             delay={250}
@@ -243,28 +251,28 @@ const Index = () => {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 title="Couriers In Compliance"
-                value={42}
+                value={stats?.couriersCompliant ?? 0}
                 icon={Truck}
                 variant="success"
                 delay={350}
               />
               <StatCard
                 title="Couriers Out of Compliance"
-                value={6}
+                value={stats?.couriersNonCompliant ?? 0}
                 icon={Truck}
                 variant="danger"
                 delay={400}
               />
               <StatCard
                 title="Shippers In Compliance"
-                value={148}
+                value={stats?.shippersCompliant ?? 0}
                 icon={Package}
                 variant="success"
                 delay={450}
               />
               <StatCard
                 title="Shippers Out of Compliance"
-                value={8}
+                value={stats?.shippersNonCompliant ?? 0}
                 icon={Package}
                 variant="danger"
                 delay={500}
@@ -276,7 +284,7 @@ const Index = () => {
         {/* Main Content Grid */}
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <RecentActivityTable />
+            <RecentActivityTable activities={recentActivity} />
           </div>
           <div>
             <AlertsCard />

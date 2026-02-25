@@ -1,10 +1,10 @@
 // ============================================================
-// Analytics Service — mock data shell
-// Pattern: types → mock data → async functions (swap for API later)
+// Analytics Service — API-backed
 // ============================================================
 
 import { LucideIcon } from "lucide-react";
 import { Activity, Target, Clock, Zap } from "lucide-react";
+import { apiGet } from "./api";
 
 export type DateRange = "7days" | "14days" | "30days" | "90days";
 export type PerformanceFilter = "all" | "top" | "good" | "average";
@@ -21,8 +21,8 @@ export interface AnalyticsStatItem {
     value: string;
     change: string;
     isPositive: boolean;
-    icon: LucideIcon;
-    color: string;
+    icon?: LucideIcon;
+    color?: string;
     description: string;
 }
 
@@ -106,25 +106,31 @@ const mockCourierPerformance: CourierPerformanceItem[] = [
     { name: "James Lee", deliveries: 76, rating: 4.2, onTime: 82, status: "average" },
 ];
 
-// --- Async service functions (mock → API ready) ---
+const titleToIcon: Record<string, LucideIcon> = {
+    "Deliveries Today": Activity,
+    "On-Time Rate": Target,
+    "Avg. Transit Time": Clock,
+    "Utilization": Zap,
+};
 
-export async function fetchAnalyticsStats(
-    dateRange: DateRange
-): Promise<AnalyticsStatItem[]> {
-    // TODO: replace with apiGet<AnalyticsStatItem[]>(`/analytics/stats?range=${dateRange}`)
-    return Promise.resolve(statsData[dateRange]);
+export async function fetchAnalyticsStats(dateRange: DateRange): Promise<AnalyticsStatItem[]> {
+    const res = await apiGet<AnalyticsStatItem[]>(`/analytics/stats?range=${dateRange}`);
+    if (!res.success || !Array.isArray(res.data)) return statsData[dateRange];
+    return res.data.map((item) => ({
+        ...item,
+        icon: titleToIcon[item.title] ?? Activity,
+        color: item.color ?? "primary",
+    }));
 }
 
-export async function fetchDeliveryTrends(
-    dateRange: DateRange
-): Promise<DeliveryTrendItem[]> {
-    // TODO: replace with apiGet<DeliveryTrendItem[]>(`/analytics/trends?range=${dateRange}`)
-    return Promise.resolve(deliveryTrendsData[dateRange]);
+export async function fetchDeliveryTrends(dateRange: DateRange): Promise<DeliveryTrendItem[]> {
+    const res = await apiGet<DeliveryTrendItem[]>(`/analytics/delivery-trends?range=${dateRange}`);
+    if (!res.success || !Array.isArray(res.data)) return deliveryTrendsData[dateRange];
+    return res.data;
 }
 
-export async function fetchCourierPerformance(): Promise<
-    CourierPerformanceItem[]
-> {
-    // TODO: replace with apiGet<CourierPerformanceItem[]>("/analytics/performance")
-    return Promise.resolve(mockCourierPerformance);
+export async function fetchCourierPerformance(): Promise<CourierPerformanceItem[]> {
+    const res = await apiGet<CourierPerformanceItem[]>("/analytics/courier-performance");
+    if (!res.success || !Array.isArray(res.data)) return mockCourierPerformance;
+    return res.data;
 }

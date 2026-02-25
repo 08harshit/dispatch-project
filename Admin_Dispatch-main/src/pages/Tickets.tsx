@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { getTicketStatusConfig, getPriorityConfig as getSharedPriorityConfig } from "@/utils/styleHelpers";
-import { Ticket, Priority, TicketStatus as Status, TicketComment, fetchTickets } from "@/services/ticketService";
+import { Ticket, Priority, TicketStatus as Status, TicketComment, fetchTickets, createTicket, updateTicketStatus, addTicketComment, deleteTicket } from "@/services/ticketService";
 import { useDialogManager } from "@/hooks/useDialogManager";
 import { useTableSort } from "@/hooks/useTableSort";
 import { StatsGrid } from "@/components/common/StatsGrid";
@@ -81,9 +81,16 @@ const statusOrder: Record<Status, number> = { open: 0, "in-progress": 1, resolve
 
 export default function Tickets() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTickets().then(setTickets);
+    setLoading(true);
+    setError(null);
+    fetchTickets()
+      .then(setTickets)
+      .catch((e) => setError(e?.message || "Failed to load tickets"))
+      .finally(() => setLoading(false));
   }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -124,39 +131,55 @@ export default function Tickets() {
   const hasActiveFilters = statusFilter !== "all" || priorityFilter !== "all" || searchQuery;
   const clearFilters = () => { setStatusFilter("all"); setPriorityFilter("all"); setSearchQuery(""); };
 
-  const handleAddTicket = () => {
+  const handleAddTicket = async () => {
     if (!newTicket.title.trim() || !newTicket.description.trim()) {
       toast.error("Please fill in title and description"); return;
     }
-    const id = `TK-${String(tickets.length + 1).padStart(3, "0")}`;
-    const today = new Date().toISOString().slice(0, 10);
-    setTickets(prev => [...prev, { id, ...newTicket, status: "open" as Status, createdAt: today, updatedAt: today, comments: [] }]);
-    setNewTicket({ title: "", description: "", priority: "medium" });
-    setAddDialogOpen(false);
-    toast.success("Ticket created successfully");
+    const created = await createTicket({ title: newTicket.title.trim(), description: newTicket.description.trim(), priority: newTicket.priority });
+    if (created) {
+      setTickets(prev => [...prev, created]);
+      setNewTicket({ title: "", description: "", priority: "medium" });
+      setAddDialogOpen(false);
+      toast.success("Ticket created successfully");
+    } else {
+      toast.error("Failed to create ticket");
+    }
   };
 
-  const handleStatusChange = (ticket: Ticket, newStatus: Status) => {
-    const today = new Date().toISOString().slice(0, 10);
-    setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: newStatus, updatedAt: today } : t));
-    if (dialogs.selected?.id === ticket.id) dialogs.setSelected({ ...ticket, status: newStatus, updatedAt: today });
-    toast.success(`Ticket ${ticket.id} updated to ${getStatusConfig(newStatus).label}`);
+  const handleStatusChange = async (ticket: Ticket, newStatus: Status) => {
+    const updated = await updateTicketStatus(ticket.id, newStatus);
+    if (updated) {
+      setTickets(prev => prev.map(t => t.id === ticket.id ? updated : t));
+      if (dialogs.selected?.id === ticket.id) dialogs.setSelected(updated);
+      toast.success(`Ticket updated to ${getStatusConfig(newStatus).label}`);
+    } else {
+      toast.error("Failed to update ticket status");
+    }
   };
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!newComment.trim() || !dialogs.selected) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const comment: TicketComment = { id: `c${Date.now()}`, author: "Admin", text: newComment.trim(), date: today };
-    const updated = { ...dialogs.selected, comments: [...dialogs.selected.comments, comment], updatedAt: today };
-    setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
-    dialogs.setSelected(updated);
-    setNewComment("");
-    toast.success("Comment added");
+    const comment = await addTicketComment(dialogs.selected.id, newComment.trim());
+    if (comment) {
+      const updated = { ...dialogs.selected, comments: [...dialogs.selected.comments, comment], updatedAt: new Date().toISOString().slice(0, 10) };
+      setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
+      dialogs.setSelected(updated);
+      setNewComment("");
+      toast.success("Comment added");
+    } else {
+      toast.error("Failed to add comment");
+    }
   };
 
-  const handleDelete = (ticket: Ticket) => {
-    setTickets(prev => prev.filter(t => t.id !== ticket.id));
-    toast.success(`Ticket ${ticket.id} deleted`);
+  const handleDelete = async (ticket: Ticket) => {
+    const ok = await deleteTicket(ticket.id);
+    if (ok) {
+      setTickets(prev => prev.filter(t => t.id !== ticket.id));
+      if (dialogs.selected?.id === ticket.id) dialogs.setOpen("view", false);
+      toast.success("Ticket deleted");
+    } else {
+      toast.error("Failed to delete ticket");
+    }
   };
 
 
@@ -283,10 +306,18 @@ export default function Tickets() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTickets.length === 0 ? (
+                {loading && (
+                  <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Loading tickets...</TableCell></TableRow>
+                )}
+                {!loading && error && (
+                  <TableRow><TableCell colSpan={6} className="text-center py-8">
+                    <span className="text-destructive">{error}</span>
+                  </TableCell></TableRow>
+                )}
+                {!loading && !error && filteredTickets.length === 0 && (
                   <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">No tickets found</TableCell></TableRow>
-                ) : (
-                  filteredTickets.map((ticket) => {
+                )}
+                {!loading && !error && filteredTickets.length > 0 && filteredTickets.map((ticket) => {
                     const priorityConf = getPriorityConfig(ticket.priority);
                     const statusConf = getStatusConfig(ticket.status);
                     const StatusIcon = statusConf.icon;

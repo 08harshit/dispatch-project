@@ -1,6 +1,31 @@
 import { Router, Request, Response } from "express";
+import { supabaseAdmin } from "../config/supabase";
+import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
+
+function mapRowToShipper(row: Record<string, unknown>): Record<string, unknown> {
+    return {
+        id: row.id,
+        name: row.name,
+        contact: row.contact_email ?? "",
+        phone: row.phone ?? "",
+        compliance: row.compliance ?? "non-compliant",
+        address: row.address ?? "",
+        businessType: row.business_type ?? "",
+        city: row.city ?? "",
+        state: row.state ?? "",
+        taxExempt: Boolean(row.tax_exempt),
+        ein: row.ein ?? "",
+        hoursPickup: row.hours_pickup ?? "",
+        hoursDropoff: row.hours_dropoff ?? "",
+        principalName: row.principal_name ?? "",
+        status: row.status ?? "active",
+        isNew: Boolean(row.is_new),
+        history: [],
+        documents: [],
+    };
+}
 
 /**
  * @swagger
@@ -48,8 +73,45 @@ const router = Router();
  *                       items:
  *                         $ref: '#/components/schemas/Shipper'
  */
-router.get("/", (_req: Request, res: Response) => {
-    res.json({ success: true, data: [], message: "List shippers" });
+router.get("/", async (req: Request, res: Response) => {
+    try {
+        const { search, compliance, status, businessType, state, isNew } = req.query;
+        let query = supabaseAdmin
+            .from("shippers")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+        if (compliance) query = query.eq("compliance", compliance as string);
+        if (status) query = query.eq("status", status as string);
+        if (state) query = query.eq("state", state as string);
+        if (businessType) query = query.eq("business_type", businessType as string);
+        if (isNew === "true") query = query.eq("is_new", true);
+        if (search && String(search).trim()) {
+            const term = `%${String(search).trim()}%`;
+            query = query.or(
+                `name.ilike.${term},contact_email.ilike.${term},phone.ilike.${term}`
+            );
+        }
+
+        const { data: rows, error } = await query;
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, data: [] });
+            }
+            console.error("Error fetching shippers:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const data = (rows || []).map((r: Record<string, unknown>) => mapRowToShipper(r));
+        res.json({ success: true, data });
+    } catch (err: unknown) {
+        console.error("Error in GET /shippers:", err);
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -62,8 +124,45 @@ router.get("/", (_req: Request, res: Response) => {
  *       200:
  *         description: Shipper stats
  */
-router.get("/stats", (_req: Request, res: Response) => {
-    res.json({ success: true, data: { total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 } });
+router.get("/stats", async (_req: Request, res: Response) => {
+    try {
+        const { data: rows, error } = await supabaseAdmin
+            .from("shippers")
+            .select("id, compliance, is_new");
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({
+                    success: true,
+                    data: { total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 },
+                });
+            }
+            console.error("Error fetching shipper stats:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const list = rows || [];
+        const total = list.length;
+        const compliant = list.filter((r: { compliance?: string }) => r.compliance === "compliant").length;
+        const nonCompliant = total - compliant;
+        const newCount = list.filter((r: { is_new?: boolean }) => r.is_new === true).length;
+        res.json({
+            success: true,
+            data: {
+                total,
+                compliant,
+                nonCompliant,
+                new: newCount,
+                alerts: nonCompliant,
+            },
+        });
+    } catch (err: unknown) {
+        console.error("Error in GET /shippers/stats:", err);
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -89,8 +188,37 @@ router.get("/stats", (_req: Request, res: Response) => {
  *                     data:
  *                       $ref: '#/components/schemas/Shipper'
  */
-router.get("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Get shipper ${req.params.id}` });
+router.get("/:id", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { data: row, error } = await supabaseAdmin
+            .from("shippers")
+            .select("*")
+            .eq("id", id)
+            .single();
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.status(404).json({ success: false, error: "Shipper not found" });
+            }
+            if (error.code === "PGRST116") {
+                return res.status(404).json({ success: false, error: "Shipper not found" });
+            }
+            console.error("Error fetching shipper:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        if (!row) {
+            return res.status(404).json({ success: false, error: "Shipper not found" });
+        }
+
+        res.json({ success: true, data: mapRowToShipper(row as Record<string, unknown>) });
+    } catch (err: unknown) {
+        console.error("Error in GET /shippers/:id:", err);
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**

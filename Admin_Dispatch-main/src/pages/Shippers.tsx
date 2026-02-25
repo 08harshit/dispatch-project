@@ -44,6 +44,8 @@ import type { FilterTab } from "@/types/common";
 
 export default function Shippers() {
   const [shippers, setShippers] = useState<Shipper[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [businessTypeFilter, setBusinessTypeFilter] = useState<string>("all");
@@ -52,9 +54,13 @@ export default function Shippers() {
 
   const dialogs = useDialogManager<Shipper>();
 
-  // Load data from service
   useEffect(() => {
-    fetchShippers().then(setShippers);
+    setLoading(true);
+    setError(null);
+    fetchShippers()
+      .then(setShippers)
+      .catch((e) => setError(e?.message || "Failed to load shippers"))
+      .finally(() => setLoading(false));
   }, []);
 
   // Get unique values for filters
@@ -259,7 +265,26 @@ export default function Shippers() {
 
           <CardContent className="p-5">
             <div className="space-y-4">
-              {filteredShippers.map((shipper, index) => (
+              {loading && (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  Loading shippers...
+                </div>
+              )}
+              {!loading && error && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
+                  {error}
+                </div>
+              )}
+              {!loading && !error && filteredShippers.length === 0 && (
+                <EmptyState
+                  icon={Package}
+                  title="No shippers found"
+                  description={shippers.length === 0 ? "Add a shipper to get started." : "No shippers match your filters."}
+                  actionLabel={shippers.length > 0 ? "Clear Filters" : undefined}
+                  onAction={shippers.length > 0 ? clearFilters : undefined}
+                />
+              )}
+              {!loading && !error && filteredShippers.map((shipper, index) => (
                 <div
                   key={shipper.id}
                   className={cn(
@@ -424,16 +449,6 @@ export default function Shippers() {
                   </div>
                 </div>
               ))}
-
-              {filteredShippers.length === 0 && (
-                <EmptyState
-                  icon={Package}
-                  title="No shippers found"
-                  description="Try adjusting your search criteria or filters to find what you're looking for"
-                  actionLabel="Clear Filters"
-                  onAction={clearFilters}
-                />
-              )}
             </div>
           </CardContent>
         </Card>
