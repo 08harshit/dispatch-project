@@ -1,5 +1,8 @@
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
+import cronRoutes from "./cron";
+import vehicleAccessRoutes from "./vehicle-access";
+import vehicleRoutes from "./vehicles";
 import courierRoutes from "./couriers";
 import shipperRoutes from "./shippers";
 import loadRoutes from "./loads";
@@ -25,6 +28,9 @@ router.get("/", (_req: Request, res: Response) => {
     });
 });
 
+// Cron endpoints (secret-based, no user auth)
+router.use("/cron", cronRoutes);
+
 // Protected API routes
 router.use(authenticate);
 router.use("/couriers", courierRoutes);
@@ -39,5 +45,7 @@ router.use("/analytics", analyticsRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/invoices", invoiceRoutes);
 router.use("/saved-loads", savedLoadsRoutes);
+router.use("/vehicles", vehicleRoutes);
+router.use("/vehicle-access", vehicleAccessRoutes);
 
 export default router;

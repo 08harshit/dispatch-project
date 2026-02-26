@@ -9,6 +9,8 @@ import { config } from "./config";
 import { swaggerSpec } from "./config/swagger";
 import { errorHandler } from "./middleware/errorHandler";
 import routes from "./routes";
+import { expireVehicleAccess } from "./services/vehicleAccessExpiry";
+import { processNotificationLog } from "./services/notificationService";
 
 const app = express();
 
@@ -23,7 +25,7 @@ app.use(
         origin: config.cors.origins,
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"],
+        allowedHeaders: ["Content-Type", "Authorization", "X-Cron-Secret"],
     })
 );
 
@@ -58,11 +60,34 @@ app.use("/api", routes);
 app.use(errorHandler);
 
 // --------------- Start ---------------
-app.listen(config.port, () => {
-    console.log(`\n🚀 Dispatch Server running on http://localhost:${config.port}`);
-    console.log(`📡 Environment: ${config.nodeEnv}`);
-    console.log(`🔗 Supabase: ${config.supabase.url}`);
-    console.log(`📖 API Docs: http://localhost:${config.port}/api-docs\n`);
+const PORT = config.port;
+app.listen(PORT, () => {
+    console.log(`\nDispatch Server running on http://localhost:${PORT}`);
+    console.log(`Environment: ${config.nodeEnv}`);
+    console.log(`Supabase: ${config.supabase.url}`);
+    console.log(`API Docs: http://localhost:${PORT}/api-docs\n`);
+
+    // Vehicle access expiry: run every 10 minutes
+    const EXPIRY_INTERVAL_MS = 10 * 60 * 1000;
+    setInterval(async () => {
+        const result = await expireVehicleAccess();
+        if (result.error) {
+            console.error("[vehicleAccessExpiry]", result.error);
+        } else if (result.expired > 0) {
+            console.log("[vehicleAccessExpiry] expired", result.expired, "record(s)");
+        }
+    }, EXPIRY_INTERVAL_MS);
+
+    // Notification worker: run every 2 minutes
+    const NOTIFICATION_INTERVAL_MS = 2 * 60 * 1000;
+    setInterval(async () => {
+        const result = await processNotificationLog();
+        if (result.errors.length) {
+            console.error("[notificationWorker]", result.errors);
+        } else if (result.sent > 0) {
+            console.log("[notificationWorker] sent", result.sent, "notification(s)");
+        }
+    }, NOTIFICATION_INTERVAL_MS);
 });
 
 export default app;

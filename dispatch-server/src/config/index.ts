@@ -19,4 +19,13 @@ export const config = {
                     .split(",")
                     .map((o) => o.trim()),
     },
+
+    /** Optional. When set, cron endpoints require X-Cron-Secret or Authorization: Bearer <value>. */
+    cronSecret: process.env.CRON_SECRET || undefined,
+
+    /** Resend: API key and from address for notification emails. If not set, notification worker skips sending. */
+    resend: {
+        apiKey: process.env.RESEND_API_KEY || undefined,
+        fromEmail: process.env.NOTIFICATION_FROM_EMAIL || process.env.FROM_EMAIL || "notifications@dispatch.local",
+    },
 };
