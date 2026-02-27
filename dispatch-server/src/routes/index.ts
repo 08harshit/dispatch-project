@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
+import { supabaseAdmin } from "../config/supabase";
 import cronRoutes from "./cron";
 import vehicleAccessRoutes from "./vehicle-access";
 import vehicleRoutes from "./vehicles";
@@ -28,11 +29,40 @@ router.get("/", (_req: Request, res: Response) => {
     });
 });
 
+// Readiness/health with DB ping (no auth)
+router.get("/health", async (_req: Request, res: Response) => {
+    try {
+        const { error } = await supabaseAdmin.from("shippers").select("id").limit(1);
+        if (error) {
+            return res.status(503).json({
+                success: false,
+                status: "unhealthy",
+                error: error.message,
+                timestamp: new Date().toISOString(),
+            });
+        }
+        res.json({
+            success: true,
+            status: "healthy",
+            timestamp: new Date().toISOString(),
+        });
+    } catch (err) {
+        res.status(503).json({
+            success: false,
+            status: "unhealthy",
+            error: err instanceof Error ? err.message : "Unknown error",
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
 // Cron endpoints (secret-based, no user auth)
 router.use("/cron", cronRoutes);
 
 // Protected API routes
 router.use(authenticate);
+// Optional: enable requireRole(["admin"]) for admin-only access when all clients are admin
+// router.use(requireRole(["admin"]));
 router.use("/couriers", courierRoutes);
 router.use("/shippers", shipperRoutes);
 router.use("/loads", loadRoutes);

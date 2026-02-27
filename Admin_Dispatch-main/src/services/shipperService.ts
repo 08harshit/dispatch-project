@@ -2,7 +2,7 @@
 // Shipper Service — API-backed
 // ============================================================
 
-import { apiGet } from "./api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "./api";
 
 export interface Shipper {
     id: string;
@@ -69,4 +69,42 @@ export async function fetchShipperStats(): Promise<ShipperStats> {
         };
     }
     return res.data;
+}
+
+export interface CreateShipperPayload {
+    name: string;
+    contact_email?: string;
+    phone?: string;
+    address?: string;
+    business_type?: string;
+    city?: string;
+    state?: string;
+    tax_exempt?: boolean;
+    ein?: string;
+    hours_pickup?: string;
+    hours_dropoff?: string;
+    principal_name?: string;
+}
+
+export async function createShipper(payload: CreateShipperPayload): Promise<Shipper> {
+    const res = await apiPost<Shipper>("/shippers", payload);
+    if (!res.success || !res.data) throw new Error(res.error || "Failed to create shipper");
+    return res.data;
+}
+
+export async function updateShipper(id: string, payload: Partial<CreateShipperPayload>): Promise<Shipper> {
+    const res = await apiPut<Shipper>(`/shippers/${id}`, payload);
+    if (!res.success || !res.data) throw new Error(res.error || "Failed to update shipper");
+    return res.data;
+}
+
+export async function updateShipperStatus(id: string, status: "active" | "inactive"): Promise<Shipper> {
+    const res = await apiPatch<Shipper>(`/shippers/${id}/status`, { status });
+    if (!res.success || !res.data) throw new Error(res.error || "Failed to update shipper status");
+    return res.data;
+}
+
+export async function deleteShipper(id: string): Promise<void> {
+    const res = await apiDelete<unknown>(`/shippers/${id}`);
+    if (!res.success) throw new Error(res.error || "Failed to delete shipper");
 }

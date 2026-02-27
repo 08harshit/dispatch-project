@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 
 const router = Router();
 
@@ -74,7 +75,7 @@ router.get("/", async (req: Request, res: Response) => {
         const { data: couriers, error } = await query;
 
         if (error) {
-            console.error("Error fetching couriers:", error);
+            logger.error({ err: error }, "Error fetching couriers");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -167,7 +168,7 @@ router.get("/", async (req: Request, res: Response) => {
 
         res.json({ success: true, data: shaped });
     } catch (err: any) {
-        console.error("Error in GET /couriers:", err);
+        logger.error({ err }, "Error in GET /couriers");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -189,7 +190,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
             .select("status, compliance, is_new");
 
         if (error) {
-            console.error("Error fetching stats:", error);
+            logger.error({ err: error }, "Error fetching stats");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -204,7 +205,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
 
         res.json({ success: true, data: stats });
     } catch (err: any) {
-        console.error("Error in GET /couriers/stats:", err);
+        logger.error({ err }, "Error in GET /couriers/stats");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -305,7 +306,7 @@ router.post("/", async (req: Request, res: Response) => {
             .single();
 
         if (courierError || !courier) {
-            console.error("Error creating courier:", courierError);
+            logger.error({ err: courierError }, "Error creating courier");
             return res.status(500).json({ success: false, error: courierError?.message || "Failed to create courier" });
         }
 
@@ -371,7 +372,7 @@ router.post("/", async (req: Request, res: Response) => {
 
         res.json({ success: true, data: { id: courierId }, message: "Courier created" });
     } catch (err: any) {
-        console.error("Error in POST /couriers:", err);
+        logger.error({ err }, "Error in POST /couriers");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -500,7 +501,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 
         res.json({ success: true, message: `Courier ${id} updated` });
     } catch (err: any) {
-        console.error(`Error updating courier ${req.params.id}:`, err);
+        logger.error({ err, courierId: req.params.id }, "Error updating courier");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -553,7 +554,7 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
 
         res.json({ success: true, data: { status: newStatus }, message: `Courier ${id} status toggled` });
     } catch (err: any) {
-        console.error(`Error toggling status for courier ${req.params.id}:`, err);
+        logger.error({ err, courierId: req.params.id }, "Error toggling status for courier");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -586,7 +587,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
         res.json({ success: true, message: `Courier ${id} deleted` });
     } catch (err: any) {
-        console.error(`Error deleting courier ${req.params.id}:`, err);
+        logger.error({ err, courierId: req.params.id }, "Error deleting courier");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -759,7 +760,7 @@ router.post("/:id/password", async (req: Request, res: Response) => {
 
         res.json({ success: true, message: `Password updated for courier ${id}` });
     } catch (err: any) {
-        console.error(`Error updating password for courier ${req.params.id}:`, err);
+        logger.error({ err, courierId: req.params.id }, "Error updating password for courier");
         res.status(500).json({ success: false, error: err.message });
     }
 });

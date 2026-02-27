@@ -2,7 +2,7 @@
 // Load Service — API-backed (leads)
 // ============================================================
 
-import { apiGet } from "./api";
+import { apiGet, apiPost, apiPut, apiDelete } from "./api";
 
 export interface Load {
     id: string;
@@ -18,6 +18,9 @@ export interface Load {
     courierInfo: string;
     docs: { name: string; type: string }[];
     history: { date: string; action: string }[];
+    pickup_address?: string;
+    delivery_address?: string;
+    notes?: string;
 }
 
 export type LoadStatus = Load["status"];
@@ -61,4 +64,57 @@ export async function fetchLoadStats(): Promise<{
         alerts: number;
     }>("/loads/stats");
     return res.data ?? { total: 0, inTransit: 0, delivered: 0, pending: 0, cancelled: 0, alerts: 0 };
+}
+
+export interface CreateLoadPayload {
+    listing_id: string;
+    shipper_id: string;
+    pickup_address: string;
+    delivery_address: string;
+    pickup_contact_name?: string;
+    pickup_contact_phone?: string;
+    pickup_contact_email?: string;
+    delivery_contact_name?: string;
+    delivery_contact_phone?: string;
+    delivery_contact_email?: string;
+    vehicle_year?: string;
+    vehicle_make?: string;
+    vehicle_model?: string;
+    vehicle_vin?: string;
+    vehicle_type?: string;
+    vehicle_color?: string;
+    initial_price?: number;
+    payment_type?: string;
+    notes?: string;
+}
+
+export async function createLoad(payload: CreateLoadPayload): Promise<void> {
+    const res = await apiPost<{ id: string }>("/loads", payload);
+    if (!res.success) throw new Error(res.error || "Failed to create load");
+}
+
+export interface UpdateLoadPayload {
+    pickup_address?: string;
+    delivery_address?: string;
+    vehicle_year?: string;
+    vehicle_make?: string;
+    vehicle_model?: string;
+    vehicle_vin?: string;
+    vehicle_type?: string;
+    vehicle_color?: string;
+    initial_price?: number;
+    payment_type?: string;
+    notes?: string;
+    status?: string;
+}
+
+export async function updateLoad(id: string, payload: UpdateLoadPayload): Promise<Load> {
+    const res = await apiPut<Load>(`/loads/${id}`, payload);
+    if (!res.success || !res.data) throw new Error(res.error || "Failed to update load");
+    return res.data;
+}
+
+export async function deleteLoad(id: string): Promise<void> {
+    const res = await apiDelete<{ message: string }>(`/loads/${id}`);
+    if (!res.success) throw new Error(res.error || "Failed to delete load");
 }

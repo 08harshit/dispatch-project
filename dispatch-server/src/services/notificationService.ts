@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { logger } from "../utils/logger";
 import { supabaseAdmin } from "../config/supabase";
 
 const RESEND_URL = "https://api.resend.com/emails";
@@ -115,7 +116,7 @@ async function sendResend(to: string[], subject: string, text: string): Promise<
     });
     if (!res.ok) {
         const body = await res.text();
-        console.error("[notificationService] Resend error:", res.status, body);
+        logger.error({ status: res.status, body }, "[notificationService] Resend error");
         return false;
     }
     return true;

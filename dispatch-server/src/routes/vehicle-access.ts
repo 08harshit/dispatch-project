@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { isMissingTableError } from "../utils/dbError";
+import { logger } from "../utils/logger";
 
 const router = Router();
 
@@ -53,13 +54,13 @@ router.get("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Error fetching vehicle_access:", error);
+            logger.error({ err: error }, "Error fetching vehicle_access");
             return res.status(500).json({ success: false, error: error.message });
         }
 
         res.json({ success: true, data: rows || [] });
     } catch (err: unknown) {
-        console.error("Error in GET /vehicle-access:", err);
+        logger.error({ err }, "Error in GET /vehicle-access");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });

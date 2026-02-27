@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -55,7 +56,7 @@ router.get("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Error fetching tickets:", error);
+            logger.error({ err: error }, "Error fetching tickets");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -73,7 +74,7 @@ router.get("/", async (req: Request, res: Response) => {
         const data = list.map((r: Record<string, unknown>) => mapTicket(r, commentsByTicket.get(String(r.id)) || []));
         res.json({ success: true, data });
     } catch (err: unknown) {
-        console.error("Error in GET /tickets:", err);
+        logger.error({ err }, "Error in GET /tickets");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -96,7 +97,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
                     data: { open: 0, inProgress: 0, resolved: 0, closed: 0, highPriority: 0 },
                 });
             }
-            console.error("Error fetching ticket stats:", error);
+            logger.error({ err: error }, "Error fetching ticket stats");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -111,7 +112,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
             data: { open, inProgress, resolved, closed, highPriority, urgent: highPriority },
         });
     } catch (err: unknown) {
-        console.error("Error in GET /tickets/stats:", err);
+        logger.error({ err }, "Error in GET /tickets/stats");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -132,7 +133,7 @@ router.get("/:id", async (req: Request, res: Response) => {
             if (isMissingTableError(error) || error.code === "PGRST116") {
                 return res.status(404).json({ success: false, error: "Ticket not found" });
             }
-            console.error("Error fetching ticket:", error);
+            logger.error({ err: error }, "Error fetching ticket");
             return res.status(500).json({ success: false, error: error.message });
         }
         if (!row) {
@@ -146,7 +147,7 @@ router.get("/:id", async (req: Request, res: Response) => {
             .order("created_at", { ascending: true });
         res.json({ success: true, data: mapTicket(row as Record<string, unknown>, commentRows || []) });
     } catch (err: unknown) {
-        console.error("Error in GET /tickets/:id:", err);
+        logger.error({ err }, "Error in GET /tickets/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -171,12 +172,12 @@ router.post("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.status(503).json({ success: false, error: "Tickets table not available" });
             }
-            console.error("Error creating ticket:", error);
+            logger.error({ err: error }, "Error creating ticket");
             return res.status(500).json({ success: false, error: error.message });
         }
         res.status(201).json({ success: true, data: mapTicket(row as Record<string, unknown>, []) });
     } catch (err: unknown) {
-        console.error("Error in POST /tickets:", err);
+        logger.error({ err }, "Error in POST /tickets");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -199,14 +200,14 @@ router.put("/:id", async (req: Request, res: Response) => {
             if (isMissingTableError(error) || error.code === "PGRST116") {
                 return res.status(404).json({ success: false, error: "Ticket not found" });
             }
-            console.error("Error updating ticket:", error);
+            logger.error({ err: error }, "Error updating ticket");
             return res.status(500).json({ success: false, error: error.message });
         }
         if (!row) return res.status(404).json({ success: false, error: "Ticket not found" });
         const { data: commentRows } = await supabaseAdmin.from("ticket_comments").select("*").eq("ticket_id", id).order("created_at", { ascending: true });
         res.json({ success: true, data: mapTicket(row as Record<string, unknown>, commentRows || []) });
     } catch (err: unknown) {
-        console.error("Error in PUT /tickets/:id:", err);
+        logger.error({ err }, "Error in PUT /tickets/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -224,14 +225,14 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
             if (isMissingTableError(error) || error.code === "PGRST116") {
                 return res.status(404).json({ success: false, error: "Ticket not found" });
             }
-            console.error("Error updating ticket status:", error);
+            logger.error({ err: error }, "Error updating ticket status");
             return res.status(500).json({ success: false, error: error.message });
         }
         if (!row) return res.status(404).json({ success: false, error: "Ticket not found" });
         const { data: commentRows } = await supabaseAdmin.from("ticket_comments").select("*").eq("ticket_id", id).order("created_at", { ascending: true });
         res.json({ success: true, data: mapTicket(row as Record<string, unknown>, commentRows || []) });
     } catch (err: unknown) {
-        console.error("Error in PATCH /tickets/:id/status:", err);
+        logger.error({ err }, "Error in PATCH /tickets/:id/status");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -245,12 +246,12 @@ router.delete("/:id", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, message: "Ticket deleted" });
             }
-            console.error("Error deleting ticket:", error);
+            logger.error({ err: error }, "Error deleting ticket");
             return res.status(500).json({ success: false, error: error.message });
         }
         res.json({ success: true, message: "Ticket deleted" });
     } catch (err: unknown) {
-        console.error("Error in DELETE /tickets/:id:", err);
+        logger.error({ err }, "Error in DELETE /tickets/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -272,7 +273,7 @@ router.post("/:id/comments", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.status(503).json({ success: false, error: "Tickets table not available" });
             }
-            console.error("Error adding comment:", error);
+            logger.error({ err: error }, "Error adding comment");
             return res.status(500).json({ success: false, error: error.message });
         }
         res.status(201).json({
@@ -285,7 +286,7 @@ router.post("/:id/comments", async (req: Request, res: Response) => {
             },
         });
     } catch (err: unknown) {
-        console.error("Error in POST /tickets/:id/comments:", err);
+        logger.error({ err }, "Error in POST /tickets/:id/comments");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });

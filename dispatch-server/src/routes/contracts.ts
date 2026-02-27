@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -49,7 +50,7 @@ router.get("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Error fetching contracts:", error);
+            logger.error({ err: error }, "Error fetching contracts");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -76,7 +77,7 @@ router.get("/", async (req: Request, res: Response) => {
         }));
         res.json({ success: true, data });
     } catch (err: any) {
-        console.error("Error in GET /contracts:", err);
+        logger.error({ err }, "Error in GET /contracts");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -193,7 +194,7 @@ router.post("/", async (req: Request, res: Response) => {
             .single();
 
         if (contractError || !contract) {
-            console.error("Error creating contract:", contractError);
+            logger.error({ err: contractError }, "Error creating contract");
             return res.status(500).json({ success: false, error: (contractError as any)?.message || "Failed to create contract" });
         }
 
@@ -208,7 +209,7 @@ router.post("/", async (req: Request, res: Response) => {
             .single();
 
         if (tripError || !trip) {
-            console.error("Error creating trip:", tripError);
+            logger.error({ err: tripError }, "Error creating trip");
             return res.status(500).json({ success: false, error: (tripError as any)?.message || "Failed to create trip" });
         }
 
@@ -231,7 +232,7 @@ router.post("/", async (req: Request, res: Response) => {
             message: "Contract and trip created",
         });
     } catch (err: any) {
-        console.error("Error in POST /contracts:", err);
+        logger.error({ err }, "Error in POST /contracts");
         res.status(500).json({ success: false, error: err.message });
     }
 });

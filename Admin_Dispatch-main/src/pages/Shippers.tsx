@@ -18,6 +18,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -37,7 +47,7 @@ import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddShipperForm, ShipperFormData } from "@/components/forms/AddShipperForm";
 import { toast } from "sonner";
-import { Shipper, ShipperStats, ShipperFilters, fetchShippers, fetchShipperStats } from "@/services/shipperService";
+import { Shipper, ShipperStats, ShipperFilters, fetchShippers, fetchShipperStats, updateShipperStatus, deleteShipper } from "@/services/shipperService";
 import type { FilterTab } from "@/types/common";
 
 
@@ -51,16 +61,22 @@ export default function Shippers() {
   const [businessTypeFilter, setBusinessTypeFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Shipper | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const dialogs = useDialogManager<Shipper>();
 
-  useEffect(() => {
+  const loadShippers = () => {
     setLoading(true);
     setError(null);
     fetchShippers()
       .then(setShippers)
       .catch((e) => setError(e?.message || "Failed to load shippers"))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadShippers();
   }, []);
 
   // Get unique values for filters
@@ -97,10 +113,30 @@ export default function Shippers() {
     setStateFilter("all");
   };
 
-  const handleToggleStatus = (shipper: Shipper) => {
+  const handleToggleStatus = async (shipper: Shipper) => {
     const newStatus = shipper.status === "active" ? "inactive" : "active";
-    setShippers(prev => prev.map(s => s.id === shipper.id ? { ...s, status: newStatus } : s));
-    toast.success(`${shipper.name} ${newStatus === "active" ? "activé" : "désactivé"}`);
+    try {
+      await updateShipperStatus(shipper.id, newStatus);
+      setShippers(prev => prev.map(s => s.id === shipper.id ? { ...s, status: newStatus } : s));
+      toast.success(`${shipper.name} ${newStatus === "active" ? "activated" : "deactivated"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update status");
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteShipper(deleteTarget.id);
+      setShippers(prev => prev.filter(s => s.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success(`${deleteTarget.name} deleted`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete shipper");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -143,7 +179,7 @@ export default function Shippers() {
               <DialogHeader>
                 <DialogTitle>Add New Shipper</DialogTitle>
               </DialogHeader>
-              <AddShipperForm onSuccess={() => setIsAddDialogOpen(false)} />
+              <AddShipperForm onSuccess={() => { setIsAddDialogOpen(false); loadShippers(); }} />
             </DialogContent>
           </Dialog>
         </div>
@@ -437,7 +473,7 @@ export default function Shippers() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="my-2" />
                           <DropdownMenuItem
-                            onClick={() => toast.error(`${shipper.name} deleted`)}
+                            onClick={() => setDeleteTarget(shipper)}
                             className="gap-3 rounded-lg text-destructive focus:text-destructive focus:bg-destructive/10"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -562,15 +598,17 @@ export default function Shippers() {
           {dialogs.selected && (
             <AddShipperForm
               onSuccess={() => {
-                dialogs.setOpen.bind(null, "edit")(false);
-                toast.success(`${dialogs.selected.name} updated successfully!`);
+                dialogs.setOpen("edit", false);
+                loadShippers();
               }}
               isEditing={true}
               initialData={{
+                id: dialogs.selected.id,
                 businessName: dialogs.selected.name,
-                businessType: dialogs.selected.businessType.toLowerCase(),
+                businessType: dialogs.selected.businessType?.toLowerCase() ?? "",
                 dealerContactEmail: dialogs.selected.contact,
                 dealerPhone: dialogs.selected.phone,
+                address: dialogs.selected.address,
                 city: dialogs.selected.city,
                 state: dialogs.selected.state,
                 ein: dialogs.selected.ein,
@@ -578,7 +616,7 @@ export default function Shippers() {
                 hoursPickup: dialogs.selected.hoursPickup,
                 hoursDropoff: dialogs.selected.hoursDropoff,
                 principalName: dialogs.selected.principalName,
-              } as Partial<ShipperFormData>}
+              }}
             />
           )}
         </DialogContent>
@@ -594,6 +632,28 @@ export default function Shippers() {
           accountEmail={dialogs.selected.contact}
         />
       )}
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Shipper</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteTarget?.name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteConfirm(); }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }

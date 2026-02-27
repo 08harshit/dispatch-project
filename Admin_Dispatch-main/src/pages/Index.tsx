@@ -9,9 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
-import { fetchDashboardStats, fetchRecentActivity, type DashboardStats, type RecentActivityItem } from "@/services/dashboardService";
+import { fetchDashboardStats, fetchRecentActivity, fetchDashboardAlerts, type DashboardStats, type RecentActivityItem } from "@/services/dashboardService";
 
-const alerts = [
+const fallbackAlerts = [
   {
     id: "1",
     title: "License Expiring Soon",
@@ -83,15 +83,28 @@ const alertStyles = {
 const Index = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
-  const [notifications, setNotifications] = useState(alerts);
+  const [alerts, setAlerts] = useState<{ id: string; title: string; description: string; type: "warning" | "urgent" | "info"; time: string }[]>(fallbackAlerts);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchDashboardStats().then(setStats).catch(() => setStats(null));
     fetchRecentActivity().then(setRecentActivity).catch(() => setRecentActivity([]));
+    fetchDashboardAlerts()
+      .then((apiAlerts) => {
+        if (apiAlerts.length > 0) {
+          setAlerts(apiAlerts.map((a) => ({
+            id: a.id,
+            title: a.title,
+            description: a.description,
+            type: a.type,
+            time: a.time,
+          })));
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  const handleNotificationClick = (alert: typeof alerts[0]) => {
+  const handleNotificationClick = (alert: (typeof alerts)[0]) => {
     setReadIds((prev) => new Set(prev).add(alert.id));
     const styles = alertStyles[alert.type];
     toast(alert.title, {
@@ -102,16 +115,16 @@ const Index = () => {
 
   const handleDismiss = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setAlerts((prev) => prev.filter((n) => n.id !== id));
     toast.success("Notification dismissed");
   };
 
   const handleMarkAllRead = () => {
-    setReadIds(new Set(notifications.map((n) => n.id)));
+    setReadIds(new Set(alerts.map((n) => n.id)));
     toast.success("All notifications marked as read");
   };
 
-  const unreadCount = notifications.filter((n) => !readIds.has(n.id)).length;
+  const unreadCount = alerts.filter((n) => !readIds.has(n.id)).length;
 
   return (
     <MainLayout>
@@ -156,10 +169,10 @@ const Index = () => {
                   </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto p-2 space-y-1">
-                  {notifications.length === 0 ? (
+                  {alerts.length === 0 ? (
                     <div className="py-8 text-center text-sm text-muted-foreground">No notifications</div>
                   ) : (
-                    notifications.map((alert) => {
+                    alerts.map((alert) => {
                       const styles = alertStyles[alert.type];
                       const Icon = styles.icon;
                       const isRead = readIds.has(alert.id);
@@ -194,7 +207,7 @@ const Index = () => {
                     })
                   )}
                 </div>
-                {notifications.length > 0 && (
+                {alerts.length > 0 && (
                   <div className="border-t border-border/50 p-2">
                     <Button variant="ghost" className="w-full text-primary hover:text-primary hover:bg-primary/5 text-sm">
                       View All Alerts
@@ -287,7 +300,7 @@ const Index = () => {
             <RecentActivityTable activities={recentActivity} />
           </div>
           <div>
-            <AlertsCard />
+            <AlertsCard alerts={alerts} />
           </div>
         </div>
       </div>

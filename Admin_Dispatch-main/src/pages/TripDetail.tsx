@@ -1,19 +1,30 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Truck, MapPin, Calendar, Package } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Truck, MapPin, Calendar, Package, Scan } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-import { fetchTrip, type TripDetail as TripDetailType } from "@/services/tripService";
-import { cn } from "@/lib/utils";
+import { fetchTrip, recordTripEvent, type TripDetail as TripDetailType } from "@/services/tripService";
+import { toast } from "sonner";
 
 export default function TripDetail() {
   const { id } = useParams<{ id: string }>();
   const [trip, setTrip] = useState<TripDetailType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [eventDialog, setEventDialog] = useState<{ type: "pickup_scan" | "delivery_scan"; open: boolean } | null>(null);
+  const [scannedValue, setScannedValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
+  const loadTrip = useCallback(() => {
     if (!id) return;
     setLoading(true);
     fetchTrip(id)
@@ -21,6 +32,10 @@ export default function TripDetail() {
       .catch(() => setTrip(null))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    loadTrip();
+  }, [loadTrip]);
 
   if (loading || !trip) {
     return (
@@ -38,6 +53,31 @@ export default function TripDetail() {
   const route = trip.contract
     ? [trip.contract.start_location, trip.contract.end_location].filter(Boolean).join(" to ")
     : "-";
+
+  const hasPickupScan = trip.events?.some((e) => e.event_type === "pickup_scan") ?? false;
+  const hasDeliveryScan = trip.events?.some((e) => e.event_type === "delivery_scan") ?? false;
+  const canRecordPickup =
+    (trip.status === "scheduled" || trip.status === "in_progress") && !hasPickupScan;
+  const canRecordDelivery = hasPickupScan && !hasDeliveryScan;
+
+  const handleRecordEvent = async () => {
+    if (!id || !eventDialog?.type || !scannedValue.trim()) return;
+    setSubmitting(true);
+    try {
+      await recordTripEvent(id, {
+        event_type: eventDialog.type,
+        scanned_value: scannedValue.trim(),
+      });
+      setEventDialog(null);
+      setScannedValue("");
+      loadTrip();
+      toast.success(`${eventDialog.type.replace("_", " ")} recorded`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to record event");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <MainLayout>
@@ -128,8 +168,78 @@ export default function TripDetail() {
               </CardContent>
             </Card>
           )}
+
+          {(canRecordPickup || canRecordDelivery) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Scan className="h-5 w-5" />
+                  Record Trip Event
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {canRecordPickup && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setEventDialog({ type: "pickup_scan", open: true })}
+                    className="gap-2"
+                  >
+                    <Scan className="h-4 w-4" />
+                    Record pickup scan
+                  </Button>
+                )}
+                {canRecordDelivery && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setEventDialog({ type: "delivery_scan", open: true })}
+                    className="gap-2"
+                  >
+                    <Scan className="h-4 w-4" />
+                    Record delivery scan
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
+
+      <Dialog
+        open={!!eventDialog?.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEventDialog(null);
+            setScannedValue("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Record {eventDialog?.type?.replace("_", " ")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium">Scanned value</label>
+              <Input
+                value={scannedValue}
+                onChange={(e) => setScannedValue(e.target.value)}
+                placeholder="e.g. barcode or tracking number"
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEventDialog(null)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleRecordEvent} disabled={!scannedValue.trim() || submitting}>
+              {submitting ? "Recording..." : "Record"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }

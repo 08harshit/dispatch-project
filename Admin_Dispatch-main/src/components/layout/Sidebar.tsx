@@ -14,6 +14,7 @@ import {
   TicketCheck,
   FileText,
   MapPin,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ const navigation = [
   { name: "Loads", href: "/loads", icon: PackageOpen },
   { name: "Contracts", href: "/contracts", icon: FileText },
   { name: "Trips", href: "/trips", icon: MapPin },
+  { name: "Vehicles", href: "/vehicles", icon: Truck },
+  { name: "Vehicle Access", href: "/vehicle-access", icon: KeyRound },
   { name: "Accounting", href: "/accounting", icon: Calculator },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Tickets", href: "/tickets", icon: TicketCheck },

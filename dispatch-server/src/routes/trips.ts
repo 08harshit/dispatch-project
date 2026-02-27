@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -48,7 +49,7 @@ router.get("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Error fetching trips:", error);
+            logger.error({ err: error }, "Error fetching trips");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -92,7 +93,7 @@ router.get("/", async (req: Request, res: Response) => {
         });
         res.json({ success: true, data: out });
     } catch (err: any) {
-        console.error("Error in GET /trips:", err);
+        logger.error({ err }, "Error in GET /trips");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -197,13 +198,13 @@ router.post("/:id/events", async (req: Request, res: Response) => {
             .single();
 
         if (error) {
-            console.error("Error inserting trip event:", error);
+            logger.error({ err: error }, "Error inserting trip event");
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
         res.status(201).json({ success: true, data: event, message: "Event recorded" });
     } catch (err: any) {
-        console.error("Error in POST /trips/:id/events:", err);
+        logger.error({ err }, "Error in POST /trips/:id/events");
         res.status(500).json({ success: false, error: (err as any).message });
     }
 });

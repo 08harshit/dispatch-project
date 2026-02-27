@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -43,14 +44,14 @@ router.get("/stats", async (_req: Request, res: Response) => {
             return res.json({ success: true, data: empty });
         }
         if (couriersRes.error) {
-            console.error("Dashboard stats couriers:", couriersRes.error);
+            logger.error({ err: couriersRes.error }, "Dashboard stats couriers");
             return res.status(500).json({ success: false, error: couriersRes.error.message });
         }
         if (shippersRes.error && isMissingTableError(shippersRes.error)) {
             return res.json({ success: true, data: empty });
         }
         if (shippersRes.error) {
-            console.error("Dashboard stats shippers:", shippersRes.error);
+            logger.error({ err: shippersRes.error }, "Dashboard stats shippers");
             return res.status(500).json({ success: false, error: shippersRes.error.message });
         }
 
@@ -78,7 +79,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
             },
         });
     } catch (err: unknown) {
-        console.error("Error in GET /dashboard/stats:", err);
+        logger.error({ err }, "Error in GET /dashboard/stats");
         res.status(500).json({
             success: false,
             error: err instanceof Error ? err.message : "Unknown error",
@@ -108,7 +109,7 @@ router.get("/recent-activity", async (_req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Dashboard recent-activity:", error);
+            logger.error({ err: error }, "Dashboard recent-activity");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -124,15 +125,15 @@ router.get("/recent-activity", async (_req: Request, res: Response) => {
 
         const data = list.map((c: { id: string; status: string; created_at: string; courier_id?: string; shipper_id?: string }) => ({
             id: c.id,
-            entity: courierNames.get(c.courier_id) || shipperNames.get(c.shipper_id) || "Unknown",
-            entityType: courierNames.has(c.courier_id) ? "courier" : "shipper",
+            entity: courierNames.get(c.courier_id ?? "") || shipperNames.get(c.shipper_id ?? "") || "Unknown",
+            entityType: courierNames.has(c.courier_id ?? "") ? "courier" : "shipper",
             action: "Contract " + (c.status === "signed" || c.status === "active" ? "signed" : c.status),
             status: c.status === "completed" ? "completed" : c.status === "cancelled" ? "failed" : "pending",
             date: c.created_at ? new Date(c.created_at).toLocaleDateString() : "",
         }));
         res.json({ success: true, data });
     } catch (err: unknown) {
-        console.error("Error in GET /dashboard/recent-activity:", err);
+        logger.error({ err }, "Error in GET /dashboard/recent-activity");
         res.status(500).json({
             success: false,
             error: err instanceof Error ? err.message : "Unknown error",

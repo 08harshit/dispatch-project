@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getColorClasses } from "@/utils/styleHelpers";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
+import { getProfile, updateProfile, getNotifications, updateNotifications, updatePassword } from "@/services/settingsService";
 
 const settingsCategories = [
   { id: "profile", label: "Profile", icon: User, color: "primary" },
@@ -65,6 +66,29 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [profile, setProfile] = useState<{ displayName: string; email: string }>({ displayName: "", email: "" });
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [notificationsSaving, setNotificationsSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  useEffect(() => {
+    Promise.all([getProfile(), getNotifications()])
+      .then(([profileData, notifData]) => {
+        setProfile({
+          displayName: profileData.displayName ?? "",
+          email: profileData.email ?? "",
+        });
+        setNotifications(prev =>
+          prev.map(n => ({
+            ...n,
+            enabled: n.id === "email" ? (notifData.email ?? true) : n.id === "push" ? (notifData.push ?? true) : n.id === "urgent" ? (notifData.urgentOnly ?? false) : n.enabled,
+          }))
+        );
+      })
+      .catch(() => toast.error("Failed to load settings"))
+      .finally(() => setSettingsLoading(false));
+  }, []);
 
   const getPasswordStrength = (password: string) => {
     if (!password) return { score: 0, label: "", color: "" };
@@ -89,27 +113,62 @@ export default function Settings() {
     );
   };
 
-  const handleSave = (section: string) => {
-    toast.success(`${section} settings saved successfully!`);
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      await updateProfile({ displayName: profile.displayName || undefined });
+      toast.success("Profile saved successfully");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save profile");
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
-  const handlePasswordChange = () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      toast.error("Veuillez remplir tous les champs");
+  const handleSaveNotifications = async () => {
+    setNotificationsSaving(true);
+    try {
+      const email = notifications.find(n => n.id === "email")?.enabled ?? true;
+      const push = notifications.find(n => n.id === "push")?.enabled ?? true;
+      const urgentOnly = notifications.find(n => n.id === "urgent")?.enabled ?? false;
+      await updateNotifications({ email, push, urgentOnly });
+      toast.success("Notification preferences saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save notifications");
+    } finally {
+      setNotificationsSaving(false);
+    }
+  };
+
+  const handleSave = (section: string) => {
+    toast.info(`${section} settings — coming soon`);
+  };
+
+  const handlePasswordChange = async () => {
+    if (!newPassword || !confirmPassword) {
+      toast.error("Please fill in new password and confirmation");
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("Les mots de passe ne correspondent pas");
+      toast.error("Passwords do not match");
       return;
     }
     if (passwordStrength.score < 50) {
-      toast.error("Le mot de passe est trop faible");
+      toast.error("Password is too weak");
       return;
     }
-    toast.success("Mot de passe modifié avec succès !");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    setPasswordSaving(true);
+    try {
+      await updatePassword(newPassword);
+      toast.success("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to change password");
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   return (
@@ -201,6 +260,12 @@ export default function Settings() {
             {/* Profile Settings */}
             {activeSection === "profile" && (
               <Card className="overflow-hidden border bg-card/80 backdrop-blur-sm animate-fade-in">
+                {settingsLoading && (
+                  <CardContent className="p-6 flex items-center justify-center text-muted-foreground">
+                    Loading profile...
+                  </CardContent>
+                )}
+                {!settingsLoading && (
                 <CardHeader className="border-b bg-muted/30">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/10">
@@ -235,11 +300,24 @@ export default function Settings() {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="name" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Full Name</Label>
-                      <Input id="name" placeholder="John Doe" className="bg-muted/30 border-muted-foreground/20 focus:border-primary" />
+                      <Input
+                        id="name"
+                        placeholder="John Doe"
+                        value={profile.displayName}
+                        onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))}
+                        className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Email Address</Label>
-                      <Input id="email" type="email" placeholder="john@company.com" className="bg-muted/30 border-muted-foreground/20 focus:border-primary" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="john@company.com"
+                        value={profile.email}
+                        readOnly
+                        className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Phone Number</Label>
@@ -255,12 +333,13 @@ export default function Settings() {
                   </div>
 
                   <div className="flex justify-end pt-4 border-t">
-                    <Button onClick={() => handleSave("Profile")} className="gap-2">
+                    <Button onClick={handleSaveProfile} className="gap-2" disabled={profileSaving}>
                       <Save className="h-4 w-4" />
-                      Save Changes
+                      {profileSaving ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
                 </CardContent>
+                )}
               </Card>
             )}
 
@@ -361,9 +440,9 @@ export default function Settings() {
                   </div>
 
                   <div className="p-4 bg-muted/30 border-t flex justify-end">
-                    <Button onClick={() => handleSave("Notification")} className="gap-2">
+                    <Button onClick={handleSaveNotifications} className="gap-2" disabled={notificationsSaving}>
                       <Save className="h-4 w-4" />
-                      Save Preferences
+                      {notificationsSaving ? "Saving..." : "Save Preferences"}
                     </Button>
                   </div>
                 </CardContent>
@@ -581,9 +660,9 @@ export default function Settings() {
                       <RefreshCw className="h-3.5 w-3.5" />
                       Générer un mot de passe
                     </Button>
-                    <Button onClick={handlePasswordChange} className="gap-2">
+                    <Button onClick={handlePasswordChange} className="gap-2" disabled={passwordSaving}>
                       <Save className="h-4 w-4" />
-                      Mettre à jour
+                      {passwordSaving ? "Saving..." : "Update"}
                     </Button>
                   </div>
                 </CardContent>

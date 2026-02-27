@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -53,13 +54,13 @@ router.get("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Error fetching invoices:", error);
+            logger.error({ err: error }, "Error fetching invoices");
             return res.status(500).json({ success: false, error: error.message });
         }
 
         res.json({ success: true, data: data || [] });
     } catch (err: any) {
-        console.error("Error in GET /invoices:", err);
+        logger.error({ err }, "Error in GET /invoices");
         res.status(500).json({ success: false, error: err.message });
     }
 });

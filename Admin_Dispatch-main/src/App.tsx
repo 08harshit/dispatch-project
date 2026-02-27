@@ -18,6 +18,8 @@ import Loads from "./pages/Loads";
 import Contracts from "./pages/Contracts";
 import Trips from "./pages/Trips";
 import TripDetail from "./pages/TripDetail";
+import Vehicles from "./pages/Vehicles";
+import VehicleAccess from "./pages/VehicleAccess";
 import Settings from "./pages/Settings";
 import Tickets from "./pages/Tickets";
 import NotFound from "./pages/NotFound";
@@ -69,6 +71,8 @@ const App = () => (
             <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
             <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />
             <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
+            <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
+            <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} />
             <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />

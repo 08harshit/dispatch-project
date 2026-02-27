@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { optionalAuth } from "../middleware/auth";
 
 const router = Router();
@@ -41,7 +42,7 @@ router.get("/", async (req: Request, res: Response) => {
             .order("saved_at", { ascending: false });
 
         if (error) {
-            console.error("Error fetching saved loads:", error);
+            logger.error({ err: error }, "Error fetching saved loads");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -57,7 +58,7 @@ router.get("/", async (req: Request, res: Response) => {
             .in("id", leadIds);
 
         if (leadsError) {
-            console.error("Error fetching leads for saved loads:", leadsError);
+            logger.error({ err: leadsError }, "Error fetching leads for saved loads");
             return res.status(500).json({ success: false, error: leadsError.message });
         }
 
@@ -71,7 +72,7 @@ router.get("/", async (req: Request, res: Response) => {
 
         res.json({ success: true, data });
     } catch (err: any) {
-        console.error("Error in GET /saved-loads:", err);
+        logger.error({ err }, "Error in GET /saved-loads");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -111,13 +112,13 @@ router.post("/", async (req: Request, res: Response) => {
             .single();
 
         if (error) {
-            console.error("Error saving load:", error);
+            logger.error({ err: error }, "Error saving load");
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
         res.status(201).json({ success: true, data, message: "Load saved" });
     } catch (err: any) {
-        console.error("Error in POST /saved-loads:", err);
+        logger.error({ err }, "Error in POST /saved-loads");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -153,13 +154,13 @@ router.delete("/by-lead", async (req: Request, res: Response) => {
             .eq("lead_id", lead_id);
 
         if (error) {
-            console.error("Error deleting saved load by lead:", error);
+            logger.error({ err: error }, "Error deleting saved load by lead");
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
         res.json({ success: true, message: "Saved load removed" });
     } catch (err: any) {
-        console.error("Error in DELETE /saved-loads/by-lead:", err);
+        logger.error({ err }, "Error in DELETE /saved-loads/by-lead");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -180,13 +181,13 @@ router.delete("/:id", async (req: Request, res: Response) => {
             .eq("id", id);
 
         if (error) {
-            console.error("Error deleting saved load:", error);
+            logger.error({ err: error }, "Error deleting saved load");
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
         res.json({ success: true, message: "Saved load removed" });
     } catch (err: any) {
-        console.error("Error in DELETE /saved-loads/:id:", err);
+        logger.error({ err }, "Error in DELETE /saved-loads/:id");
         res.status(500).json({ success: false, error: err.message });
     }
 });

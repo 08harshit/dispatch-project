@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { getLoadStatusConfig } from "@/utils/styleHelpers";
-import { Load, fetchLoads, fetchLoadStats } from "@/services/loadService";
+import { Load, fetchLoads, fetchLoadStats, createLoad, updateLoad, deleteLoad, type CreateLoadPayload } from "@/services/loadService";
+import { fetchShippers } from "@/services/shipperService";
 import { useDialogManager } from "@/hooks/useDialogManager";
 import { useTableSort } from "@/hooks/useTableSort";
 import { StatsGrid } from "@/components/common/StatsGrid";
@@ -93,7 +94,25 @@ export default function Loads() {
   const [loads, setLoads] = useState<Load[]>([]);
   const [stats, setStats] = useState({ total: 0, inTransit: 0, delivered: 0, pending: 0, cancelled: 0, alerts: 0 });
   const [loading, setLoading] = useState(true);
-  const [newLoad, setNewLoad] = useState({ vehicleYear: "", vehicleMake: "", vehicleModel: "", vin: "", stockNumber: "", shipperInfo: "", pickupDate: "", dropOffDate: "", courierInfo: "" });
+  const [createLoadSubmitting, setCreateLoadSubmitting] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState<string | null>(null);
+  const [shippers, setShippers] = useState<{ id: string; name: string }[]>([]);
+  const [newLoad, setNewLoad] = useState({
+    listing_id: "",
+    shipper_id: "",
+    pickup_address: "",
+    delivery_address: "",
+    vehicle_year: "",
+    vehicle_make: "",
+    vehicle_model: "",
+    vehicle_vin: "",
+    vehicle_type: "",
+    vehicle_color: "",
+    initial_price: "",
+    payment_type: "",
+    notes: "",
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -107,6 +126,12 @@ export default function Loads() {
   useEffect(() => {
     fetchLoadStats().then(setStats).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (addDialogOpen) {
+      fetchShippers().then((list) => setShippers(list.map((s) => ({ id: s.id, name: s.name })))).catch(() => setShippers([]));
+    }
+  }, [addDialogOpen]);
 
   const filteredLoads = useMemo(() => {
     let result = loads.filter((load) => {
@@ -194,7 +219,7 @@ export default function Loads() {
           </div>
           <Button onClick={() => setAddDialogOpen(true)} className="gap-2 bg-gradient-to-r from-primary to-primary/80 shadow-glow hover:shadow-glow-lg transition-all duration-300 hover:-translate-y-1 hover:scale-105">
             <Plus className="h-4 w-4" />
-            Add Vehicle
+            Create Load
           </Button>
         </div>
 
@@ -367,11 +392,28 @@ export default function Loads() {
                             <DropdownMenuItem onClick={() => dialogs.open("view", load)}>
                               <Eye className="h-4 w-4 mr-2" /> View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => toast.info("Edit coming soon")}>
+                            <DropdownMenuItem onClick={() => dialogs.open("edit", load)}>
                               <Edit className="h-4 w-4 mr-2" /> Edit
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={() => toast.error(`${load.id} deleted`)}>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              disabled={deleteSubmitting === load.id}
+                              onClick={async () => {
+                                if (!confirm("Cancel this load?")) return;
+                                setDeleteSubmitting(load.id);
+                                try {
+                                  await deleteLoad(load.id);
+                                  toast.success("Load cancelled");
+                                  setLoads((prev) => prev.filter((l) => l.id !== load.id));
+                                  fetchLoadStats().then(setStats).catch(() => {});
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Failed to cancel load");
+                                } finally {
+                                  setDeleteSubmitting(null);
+                                }
+                              }}
+                            >
                               <Trash2 className="h-4 w-4 mr-2" /> Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -416,6 +458,107 @@ export default function Loads() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Dialog */}
+        <Dialog open={dialogs.isOpen("edit")} onOpenChange={(open) => dialogs.setOpen("edit", open)}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Load</DialogTitle>
+            </DialogHeader>
+            {dialogs.selected && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const sel = dialogs.selected!;
+                  const form = e.currentTarget;
+                  const get = (name: string) => (form.querySelector(`[name="${name}"]`) as HTMLInputElement)?.value ?? "";
+                  setEditSubmitting(true);
+                  try {
+                    await updateLoad(sel.id, {
+                      pickup_address: get("pickup_address") || undefined,
+                      delivery_address: get("delivery_address") || undefined,
+                      vehicle_year: get("vehicle_year") || undefined,
+                      vehicle_make: get("vehicle_make") || undefined,
+                      vehicle_model: get("vehicle_model") || undefined,
+                      vehicle_vin: get("vehicle_vin") || undefined,
+                      vehicle_type: get("vehicle_type") || undefined,
+                      vehicle_color: get("vehicle_color") || undefined,
+                      initial_price: get("initial_price") ? Number(get("initial_price")) : undefined,
+                      payment_type: get("payment_type") || undefined,
+                      notes: get("notes") || undefined,
+                    });
+                    toast.success("Load updated");
+                    dialogs.setOpen("edit", false);
+                    setLoading(true);
+                    const [nextLoads, nextStats] = await Promise.all([
+                      fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+                      fetchLoadStats(),
+                    ]);
+                    setLoads(nextLoads);
+                    setStats(nextStats);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Failed to update load");
+                  } finally {
+                    setEditSubmitting(false);
+                    setLoading(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Pickup address</label>
+                  <Input name="pickup_address" defaultValue={(dialogs.selected as any).pickup_address} placeholder="Pickup address" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Delivery address</label>
+                  <Input name="delivery_address" defaultValue={(dialogs.selected as any).delivery_address} placeholder="Delivery address" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Year</label>
+                    <Input name="vehicle_year" defaultValue={dialogs.selected.vehicleYear} placeholder="2024" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Make</label>
+                    <Input name="vehicle_make" defaultValue={dialogs.selected.vehicleMake} placeholder="Make" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Model</label>
+                    <Input name="vehicle_model" defaultValue={dialogs.selected.vehicleModel} placeholder="Model" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">VIN</label>
+                    <Input name="vehicle_vin" defaultValue={dialogs.selected.vin} placeholder="VIN" className="font-mono" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Vehicle type</label>
+                    <Input name="vehicle_type" defaultValue={(dialogs.selected as any).vehicle_type} placeholder="e.g. Sedan" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Initial price</label>
+                    <Input name="initial_price" type="number" step="0.01" defaultValue={(dialogs.selected as any).initial_price} placeholder="0.00" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Payment type</label>
+                    <Input name="payment_type" defaultValue={(dialogs.selected as any).payment_type} placeholder="e.g. COD" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Notes</label>
+                  <Input name="notes" defaultValue={(dialogs.selected as any).notes} placeholder="Optional notes" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => dialogs.setOpen("edit", false)} disabled={editSubmitting}>Cancel</Button>
+                  <Button type="submit" disabled={editSubmitting}>{editSubmitting ? "Saving..." : "Save"}</Button>
+                </div>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+
         {/* History Dialog */}
         <HistoryDialog
           open={dialogs.isOpen("history")}
@@ -434,95 +577,121 @@ export default function Loads() {
         />
 
 
-        {/* Add Vehicle Dialog */}
+        {/* Create Load Dialog */}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-          <DialogContent className="sm:max-w-lg animate-scale-in">
+          <DialogContent className="sm:max-w-lg animate-scale-in max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Vehicle</DialogTitle>
+              <DialogTitle>Create Load</DialogTitle>
             </DialogHeader>
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                if (!newLoad.vehicleYear || !newLoad.vehicleMake || !newLoad.vehicleModel || !newLoad.vin || !newLoad.shipperInfo || !newLoad.pickupDate || !newLoad.dropOffDate || !newLoad.courierInfo) {
-                  toast.error("Please fill in all fields");
+                if (!newLoad.listing_id.trim() || !newLoad.shipper_id || !newLoad.pickup_address.trim() || !newLoad.delivery_address.trim()) {
+                  toast.error("Please fill in listing ID, shipper, pickup address, and delivery address");
                   return;
                 }
-                const id = `LD-${String(loads.length + 1).padStart(3, "0")}`;
-                const created: Load = {
-                  id,
-                  vehicleYear: newLoad.vehicleYear,
-                  vehicleMake: newLoad.vehicleMake,
-                  vehicleModel: newLoad.vehicleModel,
-                  vin: newLoad.vin,
-                  stockNumber: newLoad.stockNumber || `${newLoad.vehicleMake.charAt(0)}${newLoad.vehicleModel.charAt(0)}-${id.slice(-3)}`,
-                  shipperInfo: newLoad.shipperInfo,
-                  pickupDate: newLoad.pickupDate,
-                  dropOffDate: newLoad.dropOffDate,
-                  status: "pending",
-                  courierInfo: newLoad.courierInfo,
-                  docs: [],
-                  history: [{ date: new Date().toISOString().split("T")[0], action: "Load created" }],
-                };
-                setLoads((prev) => [created, ...prev]);
-                setNewLoad({ vehicleYear: "", vehicleMake: "", vehicleModel: "", vin: "", stockNumber: "", shipperInfo: "", pickupDate: "", dropOffDate: "", courierInfo: "" });
-                setAddDialogOpen(false);
-                toast.success(`Load ${id} created successfully`);
+                setCreateLoadSubmitting(true);
+                try {
+                  const payload: CreateLoadPayload = {
+                    listing_id: newLoad.listing_id.trim(),
+                    shipper_id: newLoad.shipper_id,
+                    pickup_address: newLoad.pickup_address.trim(),
+                    delivery_address: newLoad.delivery_address.trim(),
+                  };
+                  if (newLoad.vehicle_year) payload.vehicle_year = newLoad.vehicle_year;
+                  if (newLoad.vehicle_make) payload.vehicle_make = newLoad.vehicle_make;
+                  if (newLoad.vehicle_model) payload.vehicle_model = newLoad.vehicle_model;
+                  if (newLoad.vehicle_vin) payload.vehicle_vin = newLoad.vehicle_vin;
+                  if (newLoad.vehicle_type) payload.vehicle_type = newLoad.vehicle_type;
+                  if (newLoad.vehicle_color) payload.vehicle_color = newLoad.vehicle_color;
+                  if (newLoad.initial_price) payload.initial_price = Number(newLoad.initial_price);
+                  if (newLoad.payment_type) payload.payment_type = newLoad.payment_type;
+                  if (newLoad.notes) payload.notes = newLoad.notes;
+                  await createLoad(payload);
+                  setNewLoad({ listing_id: "", shipper_id: "", pickup_address: "", delivery_address: "", vehicle_year: "", vehicle_make: "", vehicle_model: "", vehicle_vin: "", vehicle_type: "", vehicle_color: "", initial_price: "", payment_type: "", notes: "" });
+                  setAddDialogOpen(false);
+                  toast.success("Load created successfully");
+                  setLoading(true);
+                  const [nextLoads, nextStats] = await Promise.all([fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }), fetchLoadStats()]);
+                  setLoads(nextLoads);
+                  setStats(nextStats);
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Failed to create load");
+                } finally {
+                  setCreateLoadSubmitting(false);
+                  setLoading(false);
+                }
               }}
               className="space-y-4"
             >
-              <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Listing ID *</label>
+                <Input placeholder="e.g. LD-001" value={newLoad.listing_id} onChange={(e) => setNewLoad((p) => ({ ...p, listing_id: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Shipper *</label>
+                <Select value={newLoad.shipper_id} onValueChange={(v) => setNewLoad((p) => ({ ...p, shipper_id: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select shipper" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shippers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Pickup address *</label>
+                <Input placeholder="Full pickup address" value={newLoad.pickup_address} onChange={(e) => setNewLoad((p) => ({ ...p, pickup_address: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Delivery address *</label>
+                <Input placeholder="Full delivery address" value={newLoad.delivery_address} onChange={(e) => setNewLoad((p) => ({ ...p, delivery_address: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Year</label>
-                  <Input placeholder="2024" value={newLoad.vehicleYear} onChange={(e) => setNewLoad((p) => ({ ...p, vehicleYear: e.target.value }))} />
+                  <Input placeholder="2024" value={newLoad.vehicle_year} onChange={(e) => setNewLoad((p) => ({ ...p, vehicle_year: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Make</label>
-                  <Input placeholder="Toyota" value={newLoad.vehicleMake} onChange={(e) => setNewLoad((p) => ({ ...p, vehicleMake: e.target.value }))} />
+                  <Input placeholder="Make" value={newLoad.vehicle_make} onChange={(e) => setNewLoad((p) => ({ ...p, vehicle_make: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Model</label>
-                  <Input placeholder="Camry" value={newLoad.vehicleModel} onChange={(e) => setNewLoad((p) => ({ ...p, vehicleModel: e.target.value }))} />
+                  <Input placeholder="Model" value={newLoad.vehicle_model} onChange={(e) => setNewLoad((p) => ({ ...p, vehicle_model: e.target.value }))} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">VIN</label>
-                  <Input placeholder="1HGBH41JXMN109186" value={newLoad.vin} onChange={(e) => setNewLoad((p) => ({ ...p, vin: e.target.value }))} className="font-mono text-sm" />
+                  <Input placeholder="VIN" value={newLoad.vehicle_vin} onChange={(e) => setNewLoad((p) => ({ ...p, vehicle_vin: e.target.value }))} className="font-mono text-sm" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Stock # <span className="text-muted-foreground font-normal">(optional)</span></label>
-                  <Input placeholder="TC2024-01" value={newLoad.stockNumber} onChange={(e) => setNewLoad((p) => ({ ...p, stockNumber: e.target.value }))} className="font-mono text-sm" />
+                  <label className="text-sm font-medium text-foreground">Vehicle type</label>
+                  <Input placeholder="e.g. Sedan" value={newLoad.vehicle_type} onChange={(e) => setNewLoad((p) => ({ ...p, vehicle_type: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Initial price</label>
+                  <Input type="number" step="0.01" placeholder="0.00" value={newLoad.initial_price} onChange={(e) => setNewLoad((p) => ({ ...p, initial_price: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Payment type</label>
+                  <Input placeholder="e.g. COD" value={newLoad.payment_type} onChange={(e) => setNewLoad((p) => ({ ...p, payment_type: e.target.value }))} />
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Shipper</label>
-                <Input
-                  placeholder="e.g. AutoMax Dealers"
-                  value={newLoad.shipperInfo}
-                  onChange={(e) => setNewLoad((p) => ({ ...p, shipperInfo: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Courier</label>
-                <Input
-                  placeholder="e.g. Express Logistics LLC"
-                  value={newLoad.courierInfo}
-                  onChange={(e) => setNewLoad((p) => ({ ...p, courierInfo: e.target.value }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Pickup Date</label>
-                  <Input type="date" value={newLoad.pickupDate} onChange={(e) => setNewLoad((p) => ({ ...p, pickupDate: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Drop Off Date</label>
-                  <Input type="date" value={newLoad.dropOffDate} onChange={(e) => setNewLoad((p) => ({ ...p, dropOffDate: e.target.value }))} />
-                </div>
+                <label className="text-sm font-medium text-foreground">Notes</label>
+                <Input placeholder="Optional notes" value={newLoad.notes} onChange={(e) => setNewLoad((p) => ({ ...p, notes: e.target.value }))} />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" className="bg-gradient-to-r from-primary to-primary/80">Add Vehicle</Button>
+                <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)} disabled={createLoadSubmitting}>Cancel</Button>
+                <Button type="submit" className="bg-gradient-to-r from-primary to-primary/80" disabled={createLoadSubmitting}>
+                  {createLoadSubmitting ? "Creating..." : "Create Load"}
+                </Button>
               </div>
             </form>
           </DialogContent>

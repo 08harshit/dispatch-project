@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -61,7 +62,7 @@ router.get("/stats", async (req: Request, res: Response) => {
                     ],
                 });
             }
-            console.error("Analytics stats:", error);
+            logger.error({ err: error }, "Analytics stats");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -87,7 +88,7 @@ router.get("/stats", async (req: Request, res: Response) => {
             ],
         });
     } catch (err: unknown) {
-        console.error("Error in GET /analytics/stats:", err);
+        logger.error({ err }, "Error in GET /analytics/stats");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -122,7 +123,7 @@ router.get("/delivery-trends", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Analytics delivery-trends:", error);
+            logger.error({ err: error }, "Analytics delivery-trends");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -147,7 +148,7 @@ router.get("/delivery-trends", async (req: Request, res: Response) => {
             .map(([day, deliveries]) => ({ day, deliveries, percentage: Math.round((deliveries / max) * 100) }));
         res.json({ success: true, data });
     } catch (err: unknown) {
-        console.error("Error in GET /analytics/delivery-trends:", err);
+        logger.error({ err }, "Error in GET /analytics/delivery-trends");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -177,7 +178,7 @@ router.get("/courier-performance", async (_req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Analytics courier-performance:", error);
+            logger.error({ err: error }, "Analytics courier-performance");
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -207,7 +208,7 @@ router.get("/courier-performance", async (_req: Request, res: Response) => {
             .sort((a, b) => b.deliveries - a.deliveries);
         res.json({ success: true, data });
     } catch (err: unknown) {
-        console.error("Error in GET /analytics/courier-performance:", err);
+        logger.error({ err }, "Error in GET /analytics/courier-performance");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });

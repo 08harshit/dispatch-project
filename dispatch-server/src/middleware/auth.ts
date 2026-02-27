@@ -70,3 +70,20 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
     }
     next();
 };
+
+/**
+ * Require one of the given roles. Use after authenticate.
+ * Returns 403 if user role is not in the allowed list.
+ */
+export const requireRole = (roles: string[]) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+        const userRole = req.user?.role;
+        if (!userRole || !roles.includes(userRole)) {
+            return res.status(403).json({
+                success: false,
+                error: "Insufficient permissions",
+            });
+        }
+        next();
+    };
+};

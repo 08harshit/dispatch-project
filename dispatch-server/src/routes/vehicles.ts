@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
@@ -47,13 +48,13 @@ router.get("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.json({ success: true, data: [] });
             }
-            console.error("Error fetching vehicles:", error);
+            logger.error({ err: error }, "Error fetching vehicles");
             return res.status(500).json({ success: false, error: error.message });
         }
 
         res.json({ success: true, data: rows || [] });
     } catch (err: unknown) {
-        console.error("Error in GET /vehicles:", err);
+        logger.error({ err }, "Error in GET /vehicles");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -96,7 +97,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 
         res.json({ success: true, data: row });
     } catch (err: unknown) {
-        console.error("Error in GET /vehicles/:id:", err);
+        logger.error({ err }, "Error in GET /vehicles/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -157,7 +158,7 @@ router.post("/", async (req: Request, res: Response) => {
 
         res.status(201).json({ success: true, data: row });
     } catch (err: unknown) {
-        console.error("Error in POST /vehicles:", err);
+        logger.error({ err }, "Error in POST /vehicles");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -227,7 +228,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 
         res.json({ success: true, data: row });
     } catch (err: unknown) {
-        console.error("Error in PUT /vehicles/:id:", err);
+        logger.error({ err }, "Error in PUT /vehicles/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });
@@ -292,7 +293,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
 
         res.json({ success: true, data: row });
     } catch (err: unknown) {
-        console.error("Error in PATCH /vehicles/:id:", err);
+        logger.error({ err }, "Error in PATCH /vehicles/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
 });

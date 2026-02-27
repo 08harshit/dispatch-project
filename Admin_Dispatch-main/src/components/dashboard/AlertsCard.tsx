@@ -56,7 +56,12 @@ const alertStyles = {
   },
 };
 
-export function AlertsCard() {
+export interface AlertsCardProps {
+  alerts?: Alert[];
+}
+
+export function AlertsCard({ alerts: propAlerts }: AlertsCardProps = {}) {
+  const alerts = propAlerts && propAlerts.length > 0 ? propAlerts : mockAlerts;
   return (
     <Card className="animate-fade-in overflow-hidden" style={{ animationDelay: "300ms" }}>
       <CardHeader className="pb-3 border-b border-border/50">
@@ -67,12 +72,12 @@ export function AlertsCard() {
           </div>
           Alerts
           <span className="ml-auto rounded-full bg-gradient-to-r from-destructive to-destructive/80 px-2.5 py-1 text-xs font-bold text-destructive-foreground shadow-sm">
-            {mockAlerts.length}
+            {alerts.length}
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-3">
-        {mockAlerts.map((alert, index) => {
+        {alerts.map((alert, index) => {
           const styles = alertStyles[alert.type];
           const Icon = styles.icon;
           return (

@@ -8,6 +8,7 @@ import swaggerUi from "swagger-ui-express";
 import { config } from "./config";
 import { swaggerSpec } from "./config/swagger";
 import { errorHandler } from "./middleware/errorHandler";
+import { logger } from "./utils/logger";
 import routes from "./routes";
 import { expireVehicleAccess } from "./services/vehicleAccessExpiry";
 import { processNotificationLog } from "./services/notificationService";
@@ -61,20 +62,20 @@ app.use(errorHandler);
 
 // --------------- Start ---------------
 const PORT = config.port;
-app.listen(PORT, () => {
-    console.log(`\nDispatch Server running on http://localhost:${PORT}`);
-    console.log(`Environment: ${config.nodeEnv}`);
-    console.log(`Supabase: ${config.supabase.url}`);
-    console.log(`API Docs: http://localhost:${PORT}/api-docs\n`);
+const server = app.listen(PORT, () => {
+    logger.info(`Dispatch Server running on http://localhost:${PORT}`);
+    logger.info(`Environment: ${config.nodeEnv}`);
+    logger.info(`Supabase: ${config.supabase.url}`);
+    logger.info(`API Docs: http://localhost:${PORT}/api-docs`);
 
     // Vehicle access expiry: run every 10 minutes
     const EXPIRY_INTERVAL_MS = 10 * 60 * 1000;
     setInterval(async () => {
         const result = await expireVehicleAccess();
         if (result.error) {
-            console.error("[vehicleAccessExpiry]", result.error);
+            logger.error({ err: result.error }, "[vehicleAccessExpiry]");
         } else if (result.expired > 0) {
-            console.log("[vehicleAccessExpiry] expired", result.expired, "record(s)");
+            logger.info({ expired: result.expired }, "[vehicleAccessExpiry] expired record(s)");
         }
     }, EXPIRY_INTERVAL_MS);
 
@@ -83,11 +84,22 @@ app.listen(PORT, () => {
     setInterval(async () => {
         const result = await processNotificationLog();
         if (result.errors.length) {
-            console.error("[notificationWorker]", result.errors);
+            logger.error({ errors: result.errors }, "[notificationWorker]");
         } else if (result.sent > 0) {
-            console.log("[notificationWorker] sent", result.sent, "notification(s)");
+            logger.info({ sent: result.sent }, "[notificationWorker] sent notification(s)");
         }
     }, NOTIFICATION_INTERVAL_MS);
 });
+
+function gracefulShutdown(signal: string) {
+    logger.info({ signal }, "Shutdown signal received");
+    server.close(() => {
+        logger.info("Server closed");
+        process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 export default app;

@@ -14,6 +14,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Building2, User, FileText, Clock } from "lucide-react";
+import { createShipper, updateShipper, type CreateShipperPayload } from "@/services/shipperService";
 
 export interface ShipperFormData {
   businessName: string;
@@ -45,7 +46,7 @@ export interface ShipperFormData {
 
 interface AddShipperFormProps {
   onSuccess: () => void;
-  initialData?: Partial<ShipperFormData>;
+  initialData?: Partial<ShipperFormData> & { id?: string };
   isEditing?: boolean;
 }
 
@@ -92,13 +93,34 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    toast.success(isEditing ? "Shipper updated successfully!" : "Shipper added successfully!");
-    setIsSubmitting(false);
-    onSuccess();
+    try {
+      const payload: CreateShipperPayload = {
+        name: formData.businessName.trim(),
+        contact_email: formData.dealerContactEmail || undefined,
+        phone: formData.dealerPhone || undefined,
+        address: formData.address || undefined,
+        business_type: formData.businessType || undefined,
+        city: formData.city || undefined,
+        state: formData.state || undefined,
+        tax_exempt: formData.taxExempt,
+        ein: formData.ein || undefined,
+        hours_pickup: formData.hoursPickup || undefined,
+        hours_dropoff: formData.hoursDropoff || undefined,
+        principal_name: formData.principalName || undefined,
+      };
+      if (isEditing && initialData?.id) {
+        await updateShipper(initialData.id, payload);
+        toast.success("Shipper updated successfully!");
+      } else {
+        await createShipper(payload);
+        toast.success("Shipper added successfully!");
+      }
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save shipper");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
