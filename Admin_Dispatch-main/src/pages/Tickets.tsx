@@ -357,8 +357,7 @@ export default function Tickets() {
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                )}
+                  })}
               </TableBody>
             </Table>
           </CardContent>

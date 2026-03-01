@@ -266,6 +266,7 @@ export default function Settings() {
                   </CardContent>
                 )}
                 {!settingsLoading && (
+                <>
                 <CardHeader className="border-b bg-muted/30">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/10">
@@ -339,6 +340,7 @@ export default function Settings() {
                     </Button>
                   </div>
                 </CardContent>
+                </>
                 )}
               </Card>
             )}
