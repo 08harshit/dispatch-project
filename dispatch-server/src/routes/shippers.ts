@@ -215,7 +215,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
  */
 router.get("/:id", async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = String(req.params.id);
         const { data: row, error } = await supabaseAdmin
             .from("shippers")
             .select("*")
@@ -237,10 +237,10 @@ router.get("/:id", async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, error: "Shipper not found" });
         }
 
-        const id = row.id as string;
+        const shipperId = (row as Record<string, unknown>).id as string;
         const [history, documents] = await Promise.all([
-            shipperHistoryRepo.findByShipperId(id),
-            shipperDocumentRepo.findByShipperId(id),
+            shipperHistoryRepo.findByShipperId(shipperId),
+            shipperDocumentRepo.findByShipperId(shipperId),
         ]);
 
         res.json({ success: true, data: mapRowToShipper(row as Record<string, unknown>, history, documents) });
@@ -383,7 +383,7 @@ router.post("/", async (req: Request, res: Response) => {
  */
 router.put("/:id", async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = String(req.params.id);
         const body = req.body || {};
         const row = bodyToShipperRow(body, true);
         if (Object.keys(row).length === 0) {

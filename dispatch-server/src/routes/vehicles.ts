@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
-import { isMissingTableError } from "../utils/dbError";
+import { isMissingTableError, isUniqueViolationError } from "../utils/dbError";
 
 const router = Router();
 
@@ -31,7 +31,7 @@ const router = Router();
  */
 router.get("/", async (req: Request, res: Response) => {
     try {
-        const courierId = (req.query.courier_id as string) || req.user?.id;
+        const courierId = req.query.courier_id as string | undefined;
         const isAvailable = req.query.is_available as string | undefined;
 
         let query = supabaseAdmin
@@ -153,6 +153,13 @@ router.post("/", async (req: Request, res: Response) => {
             if (isMissingTableError(error)) {
                 return res.status(503).json({ success: false, error: "Service unavailable" });
             }
+            if (isUniqueViolationError(error)) {
+                return res.status(409).json({
+                    success: false,
+                    error: "A vehicle with this registration number already exists for this courier.",
+                    code: "DUPLICATE_VEHICLE",
+                });
+            }
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -223,6 +230,13 @@ router.put("/:id", async (req: Request, res: Response) => {
             if (error.code === "PGRST116") {
                 return res.status(404).json({ success: false, error: "Vehicle not found" });
             }
+            if (isUniqueViolationError(error)) {
+                return res.status(409).json({
+                    success: false,
+                    error: "A vehicle with this registration number already exists for this courier.",
+                    code: "DUPLICATE_VEHICLE",
+                });
+            }
             return res.status(500).json({ success: false, error: error.message });
         }
 
@@ -287,6 +301,13 @@ router.patch("/:id", async (req: Request, res: Response) => {
             }
             if (error.code === "PGRST116") {
                 return res.status(404).json({ success: false, error: "Vehicle not found" });
+            }
+            if (isUniqueViolationError(error)) {
+                return res.status(409).json({
+                    success: false,
+                    error: "A vehicle with this registration number already exists for this courier.",
+                    code: "DUPLICATE_VEHICLE",
+                });
             }
             return res.status(500).json({ success: false, error: error.message });
         }

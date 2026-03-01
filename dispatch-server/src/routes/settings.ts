@@ -188,6 +188,9 @@ router.get("/notifications", async (req: Request, res: Response) => {
             if (error.code === "PGRST116") {
                 return res.json({ success: true, data: { email: true, push: true, urgentOnly: false } });
             }
+            if (error.code === "42703") {
+                return res.json({ success: true, data: { email: true, push: true, urgentOnly: false } });
+            }
             return res.status(500).json({ success: false, error: error.message });
         }
         const prefs = (row as any)?.notification_preferences ?? { email: true, push: true, urgentOnly: false };
@@ -223,6 +226,7 @@ router.put("/notifications", async (req: Request, res: Response) => {
 
         if (error) {
             if (isMissingTableError(error)) return res.status(503).json({ success: false, error: "Service unavailable" });
+            if (error.code === "42703") return res.status(503).json({ success: false, error: "notification_preferences column not found - run migration 20260227100000_profiles_notification_preferences.sql" });
             return res.status(500).json({ success: false, error: error.message });
         }
         res.json({ success: true, data: next, message: "Notification preferences updated" });

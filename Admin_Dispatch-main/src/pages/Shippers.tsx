@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { StatsGrid } from "@/components/common/StatsGrid";
 import { HistoryDialog } from "@/components/common/HistoryDialog";
 import { DocumentsDialog } from "@/components/common/DocumentsDialog";
@@ -53,6 +54,9 @@ import type { FilterTab } from "@/types/common";
 
 
 export default function Shippers() {
+  const { shipperId: paramShipperId } = useParams();
+  const [searchParams] = useSearchParams();
+  const highlightShipperId = paramShipperId ?? searchParams.get("shipper_id") ?? undefined;
   const [shippers, setShippers] = useState<Shipper[]>([]);
   const [stats, setStats] = useState<ShipperStats>({ total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 });
   const [loading, setLoading] = useState(true);
@@ -64,8 +68,19 @@ export default function Shippers() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Shipper | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [highlightFaded, setHighlightFaded] = useState(false);
+  const highlightCardRef = useRef<HTMLDivElement | null>(null);
 
   const dialogs = useDialogManager<Shipper>();
+
+  useEffect(() => {
+    if (highlightShipperId) {
+      setActiveTab("all");
+      setBusinessTypeFilter("all");
+      setStateFilter("all");
+      setHighlightFaded(false);
+    }
+  }, [highlightShipperId]);
 
   const buildFilters = useCallback((): ShipperFilters => {
     const filters: ShipperFilters = {};
@@ -100,10 +115,6 @@ export default function Shippers() {
     loadShippers();
   }, [loadShippers]);
 
-  // Get unique values for filters from current result set
-  const uniqueBusinessTypes = [...new Set(shippers.map(s => s.businessType).filter(Boolean))].sort();
-  const uniqueStates = [...new Set(shippers.map(s => s.state).filter(Boolean))].sort();
-
   const filteredShippers = shippers.filter((shipper) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
@@ -113,6 +124,18 @@ export default function Shippers() {
       (shipper.contact && shipper.contact.toLowerCase().includes(term))
     );
   });
+
+  useEffect(() => {
+    if (!loading && filteredShippers.length && highlightShipperId && highlightCardRef.current) {
+      highlightCardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const t = setTimeout(() => setHighlightFaded(true), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [loading, filteredShippers, highlightShipperId]);
+
+  // Get unique values for filters from current result set
+  const uniqueBusinessTypes = [...new Set(shippers.map(s => s.businessType).filter(Boolean))].sort();
+  const uniqueStates = [...new Set(shippers.map(s => s.state).filter(Boolean))].sort();
 
   const totalShippers = stats.total;
   const compliantCount = stats.compliant;
@@ -349,9 +372,11 @@ export default function Shippers() {
               {!loading && !error && filteredShippers.map((shipper, index) => (
                 <div
                   key={shipper.id}
+                  ref={shipper.id === highlightShipperId ? highlightCardRef : undefined}
                   className={cn(
                     "group relative rounded-2xl border border-border/50 bg-gradient-to-r from-background via-background to-muted/10 overflow-hidden transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 hover:border-primary/40 animate-fade-in",
-                    shipper.status === "inactive" && "opacity-60"
+                    shipper.status === "inactive" && "opacity-60",
+                    shipper.id === highlightShipperId && !highlightFaded && "ring-2 ring-primary ring-inset bg-primary/10"
                   )}
                   style={{ animationDelay: `${index * 60}ms` }}
                 >

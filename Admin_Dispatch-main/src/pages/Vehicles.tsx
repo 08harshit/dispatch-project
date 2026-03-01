@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,9 +33,14 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function Vehicles() {
+  const { vehicleId: paramVehicleId } = useParams();
+  const [searchParams] = useSearchParams();
+  const highlightVehicleId = paramVehicleId ?? searchParams.get("vehicle_id") ?? undefined;
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [courierFilter, setCourierFilter] = useState<string>("all");
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null);
+  const [highlightFaded, setHighlightFaded] = useState(false);
   const [couriers, setCouriers] = useState<{ id: string; name: string }[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -58,11 +64,28 @@ export default function Vehicles() {
   };
 
   useEffect(() => {
+    if (highlightVehicleId) {
+      setCourierFilter("all");
+      setHighlightFaded(false);
+    }
+  }, [highlightVehicleId]);
+
+  useEffect(() => {
     loadVehicles();
   }, [courierFilter]);
 
   useEffect(() => {
-    fetchCouriers().then((list) => setCouriers((list || []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))).catch(() => {});
+    if (!loading && vehicles.length && highlightVehicleId && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const t = setTimeout(() => setHighlightFaded(true), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [loading, vehicles, highlightVehicleId]);
+
+  useEffect(() => {
+    fetchCouriers()
+      .then((res) => setCouriers((res?.data || []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))))
+      .catch(() => setCouriers([]));
   }, []);
 
   useEffect(() => {
@@ -201,7 +224,14 @@ export default function Vehicles() {
                 )}
                 {!loading &&
                   vehicles.map((v) => (
-                    <TableRow key={v.id} className="group hover:bg-primary/5">
+                    <TableRow
+                      key={v.id}
+                      ref={v.id === highlightVehicleId ? highlightRowRef : undefined}
+                      className={cn(
+                        "group hover:bg-primary/5",
+                        v.id === highlightVehicleId && !highlightFaded && "bg-primary/15 ring-2 ring-primary ring-inset"
+                      )}
+                    >
                       <TableCell className="font-mono font-semibold">{v.reg_no}</TableCell>
                       <TableCell>{v.vehicle_type ?? "-"}</TableCell>
                       <TableCell className="font-mono text-sm">{v.vin ?? "-"}</TableCell>
