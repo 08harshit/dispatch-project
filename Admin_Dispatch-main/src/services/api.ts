@@ -9,7 +9,14 @@ interface ApiResponse<T> {
     error?: string;
 }
 
+function assertOnline(): void {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+        throw new Error("You are offline. Please check your connection and try again.");
+    }
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
+    assertOnline();
     const { data: { session } } = await supabase.auth.getSession();
     const headers: Record<string, string> = {};
     if (session?.access_token) {

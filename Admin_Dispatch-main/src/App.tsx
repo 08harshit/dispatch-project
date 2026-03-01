@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { OfflineOverlay } from "@/components/OfflineOverlay";
 import { toast } from "sonner";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
@@ -24,7 +25,33 @@ import Settings from "./pages/Settings";
 import Tickets from "./pages/Tickets";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            retry: (failureCount, error) => {
+                if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+                return failureCount < 3;
+            },
+        },
+    },
+});
+
+function useNetworkStatus() {
+    const [isOnline, setIsOnline] = useState(() =>
+        typeof navigator !== "undefined" ? navigator.onLine : true
+    );
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener("online", handleOnline);
+        window.addEventListener("offline", handleOffline);
+        return () => {
+            window.removeEventListener("online", handleOnline);
+            window.removeEventListener("offline", handleOffline);
+        };
+    }, []);
+    return isOnline;
+}
 
 function ShipperIdRedirect() {
   const { shipperId } = useParams();
@@ -63,8 +90,10 @@ function AuthErrorHandler() {
   return null;
 }
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+function AppContent() {
+  const isOnline = useNetworkStatus();
+  if (!isOnline) return <OfflineOverlay />;
+  return (
     <AuthProvider>
       <TooltipProvider>
         <Toaster />
@@ -94,6 +123,12 @@ const App = () => (
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>
+  );
+}
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <AppContent />
   </QueryClientProvider>
 );
 
