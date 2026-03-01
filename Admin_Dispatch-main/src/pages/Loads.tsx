@@ -118,13 +118,13 @@ export default function Loads() {
     setLoading(true);
     const statusParam = statusFilter !== "all" ? statusFilter : undefined;
     fetchLoads({ status: statusParam, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
-      .then(setLoads)
+      .then((res) => setLoads(res.data))
       .catch(() => setLoads([]))
       .finally(() => setLoading(false));
   }, [statusFilter, dateFrom, dateTo]);
 
   useEffect(() => {
-    fetchLoadStats().then(setStats).catch(() => {});
+    fetchLoadStats().then(setStats).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -406,7 +406,7 @@ export default function Loads() {
                                   await deleteLoad(load.id);
                                   toast.success("Load cancelled");
                                   setLoads((prev) => prev.filter((l) => l.id !== load.id));
-                                  fetchLoadStats().then(setStats).catch(() => {});
+                                  fetchLoadStats().then(setStats).catch(() => { });
                                 } catch (err) {
                                   toast.error(err instanceof Error ? err.message : "Failed to cancel load");
                                 } finally {
@@ -489,11 +489,11 @@ export default function Loads() {
                     toast.success("Load updated");
                     dialogs.setOpen("edit", false);
                     setLoading(true);
-                    const [nextLoads, nextStats] = await Promise.all([
+                    const [nextLoadsResponse, nextStats] = await Promise.all([
                       fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
                       fetchLoadStats(),
                     ]);
-                    setLoads(nextLoads);
+                    setLoads(nextLoadsResponse.data);
                     setStats(nextStats);
                   } catch (err) {
                     toast.error(err instanceof Error ? err.message : "Failed to update load");
@@ -612,8 +612,8 @@ export default function Loads() {
                   setAddDialogOpen(false);
                   toast.success("Load created successfully");
                   setLoading(true);
-                  const [nextLoads, nextStats] = await Promise.all([fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }), fetchLoadStats()]);
-                  setLoads(nextLoads);
+                  const [nextLoadsResponse, nextStats] = await Promise.all([fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }), fetchLoadStats()]);
+                  setLoads(nextLoadsResponse.data);
                   setStats(nextStats);
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : "Failed to create load");
