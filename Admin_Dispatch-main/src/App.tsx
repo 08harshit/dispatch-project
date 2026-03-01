@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { toast } from "sonner";
@@ -25,6 +25,16 @@ import Tickets from "./pages/Tickets";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function ShipperIdRedirect() {
+  const { shipperId } = useParams();
+  return <Navigate to={`/shippers?shipper_id=${encodeURIComponent(shipperId || "")}`} replace />;
+}
+
+function VehicleIdRedirect() {
+  const { vehicleId } = useParams();
+  return <Navigate to={`/vehicles?vehicle_id=${encodeURIComponent(vehicleId || "")}`} replace />;
+}
 
 function AuthErrorHandler() {
   const location = useLocation();
@@ -66,11 +76,13 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/couriers" element={<ProtectedRoute><Couriers /></ProtectedRoute>} />
+            <Route path="/shippers/:shipperId" element={<ProtectedRoute><ShipperIdRedirect /></ProtectedRoute>} />
             <Route path="/shippers" element={<ProtectedRoute><Shippers /></ProtectedRoute>} />
             <Route path="/loads" element={<ProtectedRoute><Loads /></ProtectedRoute>} />
             <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
             <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />
             <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
+            <Route path="/vehicles/:vehicleId" element={<ProtectedRoute><VehicleIdRedirect /></ProtectedRoute>} />
             <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
             <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} />
             <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />

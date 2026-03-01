@@ -41,7 +41,7 @@ router.get("/", async (req: Request, res: Response) => {
 
         let query = supabaseAdmin
             .from("vehicle_access")
-            .select("*")
+            .select("*, vehicles(reg_no), shippers(name)")
             .order("created_at", { ascending: false });
 
         if (shipperId) query = query.eq("shipper_id", shipperId);
