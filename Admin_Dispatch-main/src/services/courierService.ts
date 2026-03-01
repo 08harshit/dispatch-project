@@ -17,7 +17,7 @@ export interface CourierListItem {
     equipmentType: string;
     isNew?: boolean;
     history: { date: string; action: string }[];
-    documents: { name: string; type: string; date: string }[];
+    documents: { id: string; name: string; type: string; date: string; url: string | null }[];
 }
 
 export interface CourierStats {
@@ -36,19 +36,47 @@ export interface CourierFilters {
     isNew?: boolean;
 }
 
+export interface DocumentMeta {
+    name: string;
+    type: string;
+    mime_type?: string;
+    file_size_bytes?: number;
+}
+
+export interface PaginationResult {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+}
+
+export interface PaginatedCouriersResponse {
+    data: CourierListItem[];
+    pagination: PaginationResult;
+}
+
 // --- API Functions ---
 
-export async function fetchCouriers(filters: CourierFilters = {}): Promise<CourierListItem[]> {
+export async function fetchCouriers(
+    filters: CourierFilters = {},
+    page?: number,
+    limit?: number,
+): Promise<PaginatedCouriersResponse> {
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);
     if (filters.compliance) params.set("compliance", filters.compliance);
     if (filters.status) params.set("status", filters.status);
     if (filters.equipmentType) params.set("equipmentType", filters.equipmentType);
     if (filters.isNew !== undefined) params.set("isNew", String(filters.isNew));
+    if (page !== undefined) params.set("page", String(page));
+    if (limit !== undefined) params.set("limit", String(limit));
 
     const query = params.toString() ? `?${params}` : "";
     const res = await apiGet<CourierListItem[]>(`/couriers${query}`);
-    return res.data;
+    return {
+        data: res.data,
+        pagination: (res as any).pagination ?? { page: 1, limit: res.data.length, total: res.data.length, totalPages: 1 },
+    };
 }
 
 export async function fetchCourierStats(): Promise<CourierStats> {
@@ -77,3 +105,34 @@ export async function deleteCourier(id: string): Promise<void> {
 export async function setCourierPassword(id: string, password: string): Promise<void> {
     await apiPost<void>(`/couriers/${id}/password`, { password });
 }
+
+// --- Phase 3: Compliance ---
+
+export async function updateCourierCompliance(
+    id: string,
+    compliance: "compliant" | "non-compliant",
+): Promise<void> {
+    await apiPatch<void>(`/couriers/${id}/compliance`, { compliance });
+}
+
+// --- Phase 1: Document Metadata ---
+
+export async function fetchCourierDocuments(id: string) {
+    const res = await apiGet<{ id: string; name: string; type: string; date: string; url: string | null }[]>(
+        `/couriers/${id}/documents`,
+    );
+    return res.data;
+}
+
+export async function addCourierDocumentMeta(
+    id: string,
+    meta: DocumentMeta,
+): Promise<{ id: string }> {
+    const res = await apiPost<{ id: string }>(`/couriers/${id}/documents`, meta);
+    return res.data;
+}
+
+export async function deleteCourierDocument(id: string, docId: string): Promise<void> {
+    await apiDelete<void>(`/couriers/${id}/documents/${docId}`);
+}
+

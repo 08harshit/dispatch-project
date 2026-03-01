@@ -27,12 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Eye, FileText, MoreHorizontal, Truck, CheckCircle, XCircle, UserPlus, AlertTriangle, History, Edit, Trash2, ExternalLink, Phone, Mail, MapPin, Filter, X, KeyRound, Power } from "lucide-react";
+import { Plus, Search, Eye, FileText, MoreHorizontal, Truck, CheckCircle, XCircle, UserPlus, AlertTriangle, History, Edit, Trash2, ExternalLink, Phone, Mail, MapPin, Filter, X, KeyRound, Power, ShieldCheck } from "lucide-react";
 import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddCourierForm, CourierFormData } from "@/components/forms/AddCourierForm";
 import { toast } from "sonner";
-import { fetchCouriers, fetchCourierStats, createCourier, toggleCourierStatus, deleteCourier, CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
+import { fetchCouriers, fetchCourierStats, createCourier, toggleCourierStatus, deleteCourier, updateCourierCompliance, CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
 import type { FilterTab } from "@/types/common";
 import { StatsGrid, StatItem } from "@/components/common/StatsGrid";
 import { HistoryDialog } from "@/components/common/HistoryDialog";
@@ -78,11 +78,11 @@ export default function Couriers() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [courierData, statsData] = await Promise.all([
+      const [couriersResult, statsData] = await Promise.all([
         fetchCouriers(buildFilters()),
         fetchCourierStats(),
       ]);
-      setCouriers(courierData);
+      setCouriers(couriersResult.data);
       setStats(statsData);
     } catch (err) {
       console.error("Failed to load couriers:", err);
@@ -155,6 +155,18 @@ export default function Couriers() {
 
   const handleVerifyFMCSA = (usdot: string) => {
     window.open(`https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&query_string=${usdot}`, '_blank');
+  };
+
+  const handleToggleCompliance = async (courier: Courier) => {
+    const newCompliance = courier.compliance === "compliant" ? "non-compliant" : "compliant";
+    try {
+      await updateCourierCompliance(courier.id, newCompliance);
+      toast.success(`${courier.name} compliance updated to ${newCompliance}`);
+      loadData();
+    } catch (err: any) {
+      console.error("Failed to update compliance:", err);
+      toast.error(err.message || "Failed to update compliance");
+    }
   };
 
   return (
@@ -478,7 +490,11 @@ export default function Couriers() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => dialogs.open("password", courier)} className="gap-3 rounded-lg">
                             <KeyRound className="h-4 w-4" />
-                            Mot de passe
+                            Set Password
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleCompliance(courier)} className="gap-3 rounded-lg">
+                            <ShieldCheck className="h-4 w-4" />
+                            {courier.compliance === "compliant" ? "Mark Non-Compliant" : "Mark Compliant"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="my-2" />
                           <DropdownMenuItem
