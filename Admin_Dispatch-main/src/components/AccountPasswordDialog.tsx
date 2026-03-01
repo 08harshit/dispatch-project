@@ -32,6 +32,7 @@ interface AccountPasswordDialogProps {
   accountName: string;
   accountId: string;
   accountEmail: string;
+  accountType?: "courier" | "shipper";
 }
 
 const generatePassword = () => {
@@ -49,6 +50,7 @@ export function AccountPasswordDialog({
   accountName,
   accountId,
   accountEmail,
+  accountType = "courier",
 }: AccountPasswordDialogProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -107,8 +109,13 @@ export function AccountPasswordDialog({
 
     setIsSaving(true);
     try {
-      const { setCourierPassword } = await import("@/services/courierService");
-      await setCourierPassword(accountId, newPassword);
+      if (accountType === "shipper") {
+        const { setShipperPassword } = await import("@/services/shipperService");
+        await setShipperPassword(accountId, newPassword);
+      } else {
+        const { setCourierPassword } = await import("@/services/courierService");
+        await setCourierPassword(accountId, newPassword);
+      }
       toast.success(`Mot de passe de ${accountName} modifié avec succès !`);
       setNewPassword("");
       setConfirmPassword("");

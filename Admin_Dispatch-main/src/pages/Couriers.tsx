@@ -632,7 +632,7 @@ export default function Couriers() {
           {dialogs.selected && (
             <AddCourierForm
               onSuccess={() => {
-                dialogs.setOpen.bind(null, "edit")(false);
+                dialogs.setOpen("edit", false);
                 loadData();
               }}
               isEditing={true}

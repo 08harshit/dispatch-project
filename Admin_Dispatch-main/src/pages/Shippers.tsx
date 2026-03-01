@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { StatsGrid } from "@/components/common/StatsGrid";
 import { HistoryDialog } from "@/components/common/HistoryDialog";
 import { DocumentsDialog } from "@/components/common/DocumentsDialog";
@@ -42,18 +43,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Eye, FileText, MoreHorizontal, Package, CheckCircle, XCircle, UserPlus, AlertTriangle, History, Edit, Trash2, Phone, Mail, MapPin, Clock, Building2, Filter, X, KeyRound, Power } from "lucide-react";
+import { Plus, Search, Eye, FileText, MoreHorizontal, Package, CheckCircle, XCircle, UserPlus, AlertTriangle, History, Edit, Trash2, Phone, Mail, MapPin, Clock, Building2, Filter, X, KeyRound, Power, ShieldCheck } from "lucide-react";
 import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddShipperForm, ShipperFormData } from "@/components/forms/AddShipperForm";
 import { toast } from "sonner";
-import { Shipper, ShipperStats, ShipperFilters, fetchShippers, fetchShipperStats, updateShipperStatus, deleteShipper } from "@/services/shipperService";
+import { Shipper, ShipperStats, ShipperFilters, fetchShippers, fetchShipperStats, updateShipperStatus, updateShipperCompliance, deleteShipper, addShipperDocument, deleteShipperDocument } from "@/services/shipperService";
 import type { FilterTab } from "@/types/common";
 
 
 
 export default function Shippers() {
+  const { shipperId: paramShipperId } = useParams();
+  const [searchParams] = useSearchParams();
+  const highlightShipperId = paramShipperId ?? searchParams.get("shipper_id") ?? undefined;
   const [shippers, setShippers] = useState<Shipper[]>([]);
+  const [stats, setStats] = useState<ShipperStats>({ total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,64 +68,108 @@ export default function Shippers() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Shipper | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [highlightFaded, setHighlightFaded] = useState(false);
+  const highlightCardRef = useRef<HTMLDivElement | null>(null);
 
   const dialogs = useDialogManager<Shipper>();
 
-  const loadShippers = () => {
+  useEffect(() => {
+    if (highlightShipperId) {
+      setActiveTab("all");
+      setBusinessTypeFilter("all");
+      setStateFilter("all");
+      setHighlightFaded(false);
+    }
+  }, [highlightShipperId]);
+
+  const buildFilters = useCallback((): ShipperFilters => {
+    const filters: ShipperFilters = {};
+    if (activeTab === "compliant") filters.compliance = "compliant";
+    if (activeTab === "non-compliant") filters.compliance = "non-compliant";
+    if (activeTab === "new") filters.isNew = true;
+    if (businessTypeFilter !== "all") filters.businessType = businessTypeFilter;
+    if (stateFilter !== "all") filters.state = stateFilter;
+    return filters;
+  }, [activeTab, businessTypeFilter, stateFilter]);
+
+  const loadShippers = useCallback(async (): Promise<Shipper[]> => {
     setLoading(true);
     setError(null);
-    fetchShippers()
-      .then(setShippers)
-      .catch((e) => setError(e?.message || "Failed to load shippers"))
-      .finally(() => setLoading(false));
-  };
+    try {
+      const [shippersData, statsData] = await Promise.all([
+        fetchShippers(buildFilters()),
+        fetchShipperStats(),
+      ]);
+      setShippers(shippersData);
+      setStats(statsData);
+      return shippersData;
+    } catch (e) {
+      setError(e?.message || "Failed to load shippers");
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, [buildFilters]);
 
   useEffect(() => {
     loadShippers();
-  }, []);
-
-  // Get unique values for filters
-  const uniqueBusinessTypes = [...new Set(shippers.map(s => s.businessType))];
-  const uniqueStates = [...new Set(shippers.map(s => s.state))].sort();
+  }, [loadShippers]);
 
   const filteredShippers = shippers.filter((shipper) => {
-    const matchesSearch =
-      shipper.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      shipper.id.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesTab =
-      activeTab === "all" ||
-      (activeTab === "compliant" && shipper.compliance === "compliant") ||
-      (activeTab === "non-compliant" && shipper.compliance === "non-compliant") ||
-      (activeTab === "new" && shipper.isNew);
-
-    const matchesBusinessType = businessTypeFilter === "all" || shipper.businessType === businessTypeFilter;
-    const matchesState = stateFilter === "all" || shipper.state === stateFilter;
-
-    return matchesSearch && matchesTab && matchesBusinessType && matchesState;
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      shipper.name.toLowerCase().includes(term) ||
+      shipper.id.toLowerCase().includes(term) ||
+      (shipper.contact && shipper.contact.toLowerCase().includes(term))
+    );
   });
 
-  const totalShippers = shippers.length;
-  const compliantCount = shippers.filter((s) => s.compliance === "compliant").length;
-  const nonCompliantCount = shippers.filter((s) => s.compliance === "non-compliant").length;
-  const newShippersCount = shippers.filter((s) => s.isNew).length;
-  const alertsCount = nonCompliantCount;
+  useEffect(() => {
+    if (!loading && filteredShippers.length && highlightShipperId && highlightCardRef.current) {
+      highlightCardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const t = setTimeout(() => setHighlightFaded(true), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [loading, filteredShippers, highlightShipperId]);
 
-  const hasActiveFilters = businessTypeFilter !== "all" || stateFilter !== "all";
+  // Get unique values for filters from current result set
+  const uniqueBusinessTypes = [...new Set(shippers.map(s => s.businessType).filter(Boolean))].sort();
+  const uniqueStates = [...new Set(shippers.map(s => s.state).filter(Boolean))].sort();
+
+  const totalShippers = stats.total;
+  const compliantCount = stats.compliant;
+  const nonCompliantCount = stats.nonCompliant;
+  const newShippersCount = stats.new;
+  const alertsCount = stats.alerts;
+
+  const hasActiveFilters = businessTypeFilter !== "all" || stateFilter !== "all" || !!searchTerm;
 
   const clearFilters = () => {
     setBusinessTypeFilter("all");
     setStateFilter("all");
+    setSearchTerm("");
   };
 
   const handleToggleStatus = async (shipper: Shipper) => {
     const newStatus = shipper.status === "active" ? "inactive" : "active";
     try {
       await updateShipperStatus(shipper.id, newStatus);
-      setShippers(prev => prev.map(s => s.id === shipper.id ? { ...s, status: newStatus } : s));
       toast.success(`${shipper.name} ${newStatus === "active" ? "activated" : "deactivated"}`);
+      loadShippers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update status");
+    }
+  };
+
+  const handleToggleCompliance = async (shipper: Shipper) => {
+    const newCompliance = shipper.compliance === "compliant" ? "non-compliant" : "compliant";
+    try {
+      await updateShipperCompliance(shipper.id, newCompliance);
+      toast.success(`${shipper.name} compliance updated to ${newCompliance}`);
+      loadShippers();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update compliance");
     }
   };
 
@@ -129,9 +178,9 @@ export default function Shippers() {
     setDeleting(true);
     try {
       await deleteShipper(deleteTarget.id);
-      setShippers(prev => prev.filter(s => s.id !== deleteTarget.id));
-      setDeleteTarget(null);
       toast.success(`${deleteTarget.name} deleted`);
+      setDeleteTarget(null);
+      loadShippers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete shipper");
     } finally {
@@ -315,17 +364,19 @@ export default function Shippers() {
                 <EmptyState
                   icon={Package}
                   title="No shippers found"
-                  description={shippers.length === 0 ? "Add a shipper to get started." : "No shippers match your filters."}
-                  actionLabel={shippers.length > 0 ? "Clear Filters" : undefined}
-                  onAction={shippers.length > 0 ? clearFilters : undefined}
+                  description={stats.total === 0 ? "Add a shipper to get started." : "No shippers match your filters or search."}
+                  actionLabel={hasActiveFilters ? "Clear Filters" : undefined}
+                  onAction={hasActiveFilters ? clearFilters : undefined}
                 />
               )}
               {!loading && !error && filteredShippers.map((shipper, index) => (
                 <div
                   key={shipper.id}
+                  ref={shipper.id === highlightShipperId ? highlightCardRef : undefined}
                   className={cn(
                     "group relative rounded-2xl border border-border/50 bg-gradient-to-r from-background via-background to-muted/10 overflow-hidden transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 hover:border-primary/40 animate-fade-in",
-                    shipper.status === "inactive" && "opacity-60"
+                    shipper.status === "inactive" && "opacity-60",
+                    shipper.id === highlightShipperId && !highlightFaded && "ring-2 ring-primary ring-inset bg-primary/10"
                   )}
                   style={{ animationDelay: `${index * 60}ms` }}
                 >
@@ -469,7 +520,11 @@ export default function Shippers() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => dialogs.open("password", shipper)} className="gap-3 rounded-lg">
                             <KeyRound className="h-4 w-4" />
-                            Mot de passe
+                            Set Password
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleCompliance(shipper)} className="gap-3 rounded-lg">
+                            <ShieldCheck className="h-4 w-4" />
+                            {shipper.compliance === "compliant" ? "Mark Non-Compliant" : "Mark Compliant"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="my-2" />
                           <DropdownMenuItem
@@ -584,6 +639,18 @@ export default function Shippers() {
         onOpenChange={dialogs.setOpen.bind(null, "docs")}
         entityName={dialogs.selected?.name || ""}
         documents={dialogs.selected?.documents || []}
+        onUpload={dialogs.selected ? async (meta) => {
+          await addShipperDocument(dialogs.selected!.id, meta);
+          const updated = await loadShippers();
+          const found = updated.find((s) => s.id === dialogs.selected?.id);
+          if (found) dialogs.setSelected(found);
+        } : undefined}
+        onDelete={dialogs.selected ? async (docId) => {
+          await deleteShipperDocument(dialogs.selected!.id, docId);
+          const updated = await loadShippers();
+          const found = updated.find((s) => s.id === dialogs.selected?.id);
+          if (found) dialogs.setSelected(found);
+        } : undefined}
       />
 
       {/* Edit Dialog */}
@@ -630,6 +697,7 @@ export default function Shippers() {
           accountName={dialogs.selected.name}
           accountId={dialogs.selected.id}
           accountEmail={dialogs.selected.contact}
+          accountType="shipper"
         />
       )}
 

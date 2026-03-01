@@ -22,7 +22,7 @@ export interface Shipper {
     status: "active" | "inactive";
     isNew?: boolean;
     history: { date: string; action: string }[];
-    documents: { name: string; type: string; date: string }[];
+    documents: { id?: string; name: string; type: string; date: string }[];
 }
 
 export interface ShipperStats {
@@ -104,7 +104,33 @@ export async function updateShipperStatus(id: string, status: "active" | "inacti
     return res.data;
 }
 
+export async function updateShipperCompliance(
+    id: string,
+    compliance: "compliant" | "non-compliant",
+): Promise<Shipper> {
+    const res = await apiPatch<Shipper>(`/shippers/${id}/compliance`, { compliance });
+    if (!res.success || !res.data) throw new Error(res.error || "Failed to update shipper compliance");
+    return res.data;
+}
+
 export async function deleteShipper(id: string): Promise<void> {
     const res = await apiDelete<unknown>(`/shippers/${id}`);
     if (!res.success) throw new Error(res.error || "Failed to delete shipper");
+}
+
+export async function setShipperPassword(id: string, password: string): Promise<void> {
+    await apiPost<void>(`/shippers/${id}/password`, { password });
+}
+
+export async function addShipperDocument(
+    shipperId: string,
+    meta: { name: string; type: string; date?: string },
+): Promise<void> {
+    const res = await apiPost<unknown>(`/shippers/${shipperId}/documents`, meta);
+    if (!res.success) throw new Error(res.error || "Failed to add document");
+}
+
+export async function deleteShipperDocument(shipperId: string, docId: string): Promise<void> {
+    const res = await apiDelete<unknown>(`/shippers/${shipperId}/documents/${docId}`);
+    if (!res.success) throw new Error(res.error || "Failed to delete document");
 }

@@ -11,3 +11,10 @@ export function isMissingTableError(error: { message?: string } | null): boolean
         (msg.includes("relation ") && msg.includes("does not exist"))
     );
 }
+
+/**
+ * Returns true if the error is a unique constraint violation (Postgres 23505).
+ */
+export function isUniqueViolationError(error: { code?: string; message?: string } | null): boolean {
+    return error?.code === "23505";
+}

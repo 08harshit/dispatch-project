@@ -92,18 +92,18 @@ export default function VehicleAccess() {
                     <TableRow key={r.id}>
                       <TableCell>
                         <Link
-                          to="/shippers"
-                          className="text-primary hover:underline font-mono text-sm"
+                          to={`/shippers/${r.shipper_id}`}
+                          className="text-primary hover:underline font-semibold"
                         >
-                          {r.shipper_id.slice(0, 8)}...
+                          {r.shippers?.name ?? r.shipper_id.slice(0, 8) + "..."}
                         </Link>
                       </TableCell>
                       <TableCell>
                         <Link
-                          to="/vehicles"
-                          className="text-primary hover:underline font-mono text-sm"
+                          to={`/vehicles/${r.vehicle_id}`}
+                          className="text-primary hover:underline font-semibold"
                         >
-                          {r.vehicle_id.slice(0, 8)}...
+                          {r.vehicles?.reg_no ?? r.vehicle_id.slice(0, 8) + "..."}
                         </Link>
                       </TableCell>
                       <TableCell>

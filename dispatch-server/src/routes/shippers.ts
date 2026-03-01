@@ -1,14 +1,20 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { supabaseAdmin } from "../config/supabase";
-import { updateShipperStatus, softDeleteShipper } from "../services/shipperService";
+import * as shipperHistoryRepo from "../repos/shipperHistoryRepo";
+import * as shipperDocumentRepo from "../repos/shipperDocumentRepo";
+import { updateShipperStatus, softDeleteShipper, updateShipperCompliance } from "../services/shipperService";
 import { isMissingTableError } from "../utils/dbError";
 import { logger } from "../utils/logger";
 import { validateBody, validateUuidParam } from "../utils/validate";
 
 const router = Router();
 
-function mapRowToShipper(row: Record<string, unknown>): Record<string, unknown> {
+function mapRowToShipper(
+    row: Record<string, unknown>,
+    history: { date: string; action: string }[] = [],
+    documents: { id: string; name: string; type: string; date: string }[] = [],
+): Record<string, unknown> {
     return {
         id: row.id,
         name: row.name,
@@ -26,8 +32,8 @@ function mapRowToShipper(row: Record<string, unknown>): Record<string, unknown> 
         principalName: row.principal_name ?? "",
         status: row.status ?? "active",
         isNew: Boolean(row.is_new),
-        history: [],
-        documents: [],
+        history,
+        documents: documents.map((d) => ({ id: d.id, name: d.name, type: d.type, date: d.date })),
     };
 }
 
@@ -108,7 +114,20 @@ router.get("/", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: error.message });
         }
 
-        const data = (rows || []).map((r: Record<string, unknown>) => mapRowToShipper(r));
+        const list = (rows || []) as Record<string, unknown>[];
+        const shipperIds = list.map((r) => r.id as string);
+
+        const [historyMap, docsMap] = await Promise.all([
+            shipperHistoryRepo.findByShipperIds(shipperIds),
+            shipperDocumentRepo.findByShipperIds(shipperIds),
+        ]);
+
+        const data = list.map((r) => {
+            const id = r.id as string;
+            const history = historyMap.get(id) || [];
+            const documents = docsMap.get(id) || [];
+            return mapRowToShipper(r, history, documents);
+        });
         res.json({ success: true, data });
     } catch (err: unknown) {
         logger.error({ err }, "Error in GET /shippers");
@@ -133,7 +152,8 @@ router.get("/stats", async (_req: Request, res: Response) => {
     try {
         const { data: rows, error } = await supabaseAdmin
             .from("shippers")
-            .select("id, compliance, is_new");
+            .select("id, compliance, is_new")
+            .is("deleted_at", null);
 
         if (error) {
             if (isMissingTableError(error)) {
@@ -195,7 +215,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
  */
 router.get("/:id", async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = String(req.params.id);
         const { data: row, error } = await supabaseAdmin
             .from("shippers")
             .select("*")
@@ -217,7 +237,13 @@ router.get("/:id", async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, error: "Shipper not found" });
         }
 
-        res.json({ success: true, data: mapRowToShipper(row as Record<string, unknown>) });
+        const shipperId = (row as Record<string, unknown>).id as string;
+        const [history, documents] = await Promise.all([
+            shipperHistoryRepo.findByShipperId(shipperId),
+            shipperDocumentRepo.findByShipperId(shipperId),
+        ]);
+
+        res.json({ success: true, data: mapRowToShipper(row as Record<string, unknown>, history, documents) });
     } catch (err: unknown) {
         logger.error({ err }, "Error in GET /shippers/:id");
         res.status(500).json({
@@ -227,6 +253,38 @@ router.get("/:id", async (req: Request, res: Response) => {
     }
 });
 
+interface ShipperBody {
+    name?: string;
+    Name?: string;
+    contact_email?: string;
+    contact?: string;
+    contactEmail?: string;
+    phone?: string;
+    Phone?: string;
+    address?: string;
+    Address?: string;
+    business_type?: string;
+    businessType?: string;
+    city?: string;
+    City?: string;
+    state?: string;
+    State?: string;
+    tax_exempt?: boolean;
+    taxExempt?: boolean;
+    ein?: string;
+    Ein?: string;
+    hours_pickup?: string;
+    hoursPickup?: string;
+    hours_dropoff?: string;
+    hoursDropoff?: string;
+    principal_name?: string;
+    principalName?: string;
+    compliance?: string;
+    status?: string;
+    is_new?: boolean;
+    isNew?: boolean;
+}
+
 /**
  * Build DB row from body (accepts camelCase or snake_case).
  */
@@ -235,7 +293,7 @@ function bodyToShipperRow(body: Record<string, unknown>, forUpdate = false): Rec
     const set = (key: string, v: unknown) => {
         if (v !== undefined && v !== null) row[key] = v;
     };
-    const b = body as any;
+    const b = body as ShipperBody;
     set("name", b.name ?? b.Name);
     set("contact_email", b.contact_email ?? b.contactEmail ?? b.contact);
     set("phone", b.phone ?? b.Phone);
@@ -292,7 +350,10 @@ router.post("/", async (req: Request, res: Response) => {
             logger.error({ err: error }, "Error creating shipper");
             return res.status(500).json({ success: false, error: error.message });
         }
-        res.status(201).json({ success: true, data: mapRowToShipper(created as Record<string, unknown>) });
+        const shipperId = (created as Record<string, unknown>).id as string;
+        await shipperHistoryRepo.addEntry(shipperId, "Shipper created");
+        const today = new Date().toISOString().split("T")[0];
+        res.status(201).json({ success: true, data: mapRowToShipper(created as Record<string, unknown>, [{ date: today, action: "Shipper created" }], []) });
     } catch (err: unknown) {
         logger.error({ err }, "Error in POST /shippers");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
@@ -322,7 +383,7 @@ router.post("/", async (req: Request, res: Response) => {
  */
 router.put("/:id", async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = String(req.params.id);
         const body = req.body || {};
         const row = bodyToShipperRow(body, true);
         if (Object.keys(row).length === 0) {
@@ -354,7 +415,12 @@ router.put("/:id", async (req: Request, res: Response) => {
             }
             return res.status(500).json({ success: false, error: error.message });
         }
-        res.json({ success: true, data: mapRowToShipper(updated as Record<string, unknown>) });
+        await shipperHistoryRepo.addEntry(id, "Shipper updated");
+        const [history, documents] = await Promise.all([
+            shipperHistoryRepo.findByShipperId(id),
+            shipperDocumentRepo.findByShipperId(id),
+        ]);
+        res.json({ success: true, data: mapRowToShipper(updated as Record<string, unknown>, history, documents) });
     } catch (err: unknown) {
         logger.error({ err }, "Error in PUT /shippers/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
@@ -378,6 +444,53 @@ router.put("/:id", async (req: Request, res: Response) => {
  */
 const patchStatusSchema = z.object({ status: z.enum(["active", "inactive"]) });
 
+const documentMetaSchema = z.object({
+    name: z.string().min(1, "Document name is required"),
+    type: z.string().min(1, "Document type is required"),
+    date: z.string().optional(),
+});
+
+const passwordSchema = z.object({
+    password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+const complianceSchema = z.object({
+    compliance: z.enum(["compliant", "non-compliant"]),
+});
+
+router.patch("/:id/compliance", validateUuidParam("id"), validateBody(complianceSchema), async (req: Request, res: Response) => {
+    try {
+        const id = String(req.params.id);
+        const { compliance } = req.body as z.infer<typeof complianceSchema>;
+
+        const result = await updateShipperCompliance(id, compliance);
+
+        if (!result.success) {
+            return res.status(result.error === "Shipper not found" ? 404 : 500).json({
+                success: false,
+                error: result.error,
+            });
+        }
+
+        await shipperHistoryRepo.addEntry(id, `Compliance changed to ${compliance}`);
+        const [history, documents] = await Promise.all([
+            shipperHistoryRepo.findByShipperId(id),
+            shipperDocumentRepo.findByShipperId(id),
+        ]);
+        res.json({
+            success: true,
+            data: mapRowToShipper(result.data as unknown as Record<string, unknown>, history, documents),
+            message: `Compliance updated to ${compliance}`,
+        });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in PATCH /shippers/:id/compliance");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
+});
+
 router.patch("/:id/status", validateUuidParam("id"), validateBody(patchStatusSchema), async (req: Request, res: Response) => {
     try {
         const id = String(req.params.id);
@@ -392,9 +505,14 @@ router.patch("/:id/status", validateUuidParam("id"), validateBody(patchStatusSch
             });
         }
 
+        await shipperHistoryRepo.addEntry(id, `Status changed to ${newStatus}`);
+        const [history, documents] = await Promise.all([
+            shipperHistoryRepo.findByShipperId(id),
+            shipperDocumentRepo.findByShipperId(id),
+        ]);
         res.json({
             success: true,
-            data: mapRowToShipper(result.data as unknown as Record<string, unknown>),
+            data: mapRowToShipper(result.data as unknown as Record<string, unknown>, history, documents),
             message: `Shipper status updated to ${newStatus}`,
         });
     } catch (err: unknown) {
@@ -433,6 +551,7 @@ router.delete("/:id", validateUuidParam("id"), async (req: Request, res: Respons
             });
         }
 
+        await shipperHistoryRepo.addEntry(id, "Shipper deleted (soft)");
         res.json({ success: true, message: "Shipper deleted" });
     } catch (err: unknown) {
         res.status(500).json({
@@ -457,8 +576,32 @@ router.delete("/:id", validateUuidParam("id"), async (req: Request, res: Respons
  *       200:
  *         description: History entries
  */
-router.get("/:id/history", (req: Request, res: Response) => {
-    res.json({ success: true, data: [], message: `History for shipper ${req.params.id}` });
+router.get("/:id/history", validateUuidParam("id"), async (req: Request, res: Response) => {
+    try {
+        const id = String(req.params.id);
+        const history = await shipperHistoryRepo.findByShipperId(id);
+        res.json({ success: true, data: history });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /shippers/:id/history");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
+});
+
+router.get("/:id/documents", validateUuidParam("id"), async (req: Request, res: Response) => {
+    try {
+        const id = String(req.params.id);
+        const documents = await shipperDocumentRepo.findByShipperId(id);
+        res.json({ success: true, data: documents });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /shippers/:id/documents");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -499,8 +642,42 @@ router.get("/:id/history", (req: Request, res: Response) => {
  *       200:
  *         description: Document uploaded
  */
-router.post("/:id/documents", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Document uploaded for shipper ${req.params.id}` });
+router.post("/:id/documents", validateUuidParam("id"), validateBody(documentMetaSchema), async (req: Request, res: Response) => {
+    try {
+        const id = String(req.params.id);
+        const body = req.body as z.infer<typeof documentMetaSchema>;
+
+        const { data: existing } = await supabaseAdmin
+            .from("shippers")
+            .select("id")
+            .eq("id", id)
+            .is("deleted_at", null)
+            .single();
+
+        if (!existing) {
+            return res.status(404).json({ success: false, error: "Shipper not found" });
+        }
+
+        const result = await shipperDocumentRepo.create(id, {
+            name: body.name,
+            type: body.type,
+            date: body.date,
+        });
+
+        if (result.error) {
+            return res.status(500).json({ success: false, error: result.error });
+        }
+
+        await shipperHistoryRepo.addEntry(id, `Document added: ${body.name}`);
+        const doc = await shipperDocumentRepo.findById(result.data!.id);
+        res.status(201).json({ success: true, data: doc, message: "Document added" });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in POST /shippers/:id/documents");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -522,8 +699,30 @@ router.post("/:id/documents", (req: Request, res: Response) => {
  *       200:
  *         description: Document deleted
  */
-router.delete("/:id/documents/:docId", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Document ${req.params.docId} deleted` });
+router.delete("/:id/documents/:docId", validateUuidParam("id"), async (req: Request, res: Response) => {
+    try {
+        const id = String(req.params.id);
+        const docId = String(req.params.docId);
+
+        const doc = await shipperDocumentRepo.findById(docId);
+        if (!doc || doc.shipper_id !== id) {
+            return res.status(404).json({ success: false, error: "Document not found" });
+        }
+
+        const result = await shipperDocumentRepo.deleteById(docId);
+        if (result.error) {
+            return res.status(500).json({ success: false, error: result.error });
+        }
+
+        await shipperHistoryRepo.addEntry(id, `Document deleted: ${doc.name}`);
+        res.json({ success: true, message: "Document deleted" });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in DELETE /shippers/:id/documents/:docId");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -552,8 +751,56 @@ router.delete("/:id/documents/:docId", (req: Request, res: Response) => {
  *       200:
  *         description: Password updated
  */
-router.post("/:id/password", (req: Request, res: Response) => {
-    res.json({ success: true, message: `Password updated for shipper ${req.params.id}` });
+router.post("/:id/password", validateUuidParam("id"), validateBody(passwordSchema), async (req: Request, res: Response) => {
+    try {
+        const id = String(req.params.id);
+        const { password } = req.body as z.infer<typeof passwordSchema>;
+
+        const { data: shipper, error: fetchErr } = await supabaseAdmin
+            .from("shippers")
+            .select("id, contact_email")
+            .eq("id", id)
+            .is("deleted_at", null)
+            .single();
+
+        if (fetchErr || !shipper) {
+            return res.status(404).json({ success: false, error: "Shipper not found" });
+        }
+
+        const email = (shipper as { contact_email?: string }).contact_email;
+        if (!email) {
+            return res.status(400).json({ success: false, error: "Shipper has no email - cannot set auth password" });
+        }
+
+        const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = userList?.users?.find((u) => u.email === email);
+
+        if (existingUser) {
+            const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password });
+            if (updateErr) {
+                return res.status(500).json({ success: false, error: updateErr.message });
+            }
+        } else {
+            const { error: createErr } = await supabaseAdmin.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true,
+                app_metadata: { role: "shipper", shipper_id: id },
+            });
+            if (createErr) {
+                return res.status(500).json({ success: false, error: createErr.message });
+            }
+        }
+
+        await shipperHistoryRepo.addEntry(id, "Password updated by Admin");
+        res.json({ success: true, message: "Password updated" });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in POST /shippers/:id/password");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 export default router;

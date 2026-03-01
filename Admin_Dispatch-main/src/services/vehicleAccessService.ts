@@ -10,6 +10,8 @@ export interface VehicleAccessRecord {
     is_active: boolean;
     created_at: string;
     updated_at: string;
+    vehicles?: { reg_no: string | null } | null;
+    shippers?: { name: string | null } | null;
 }
 
 export interface VehicleAccessFilters {
