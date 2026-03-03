@@ -16,11 +16,11 @@ import Shippers from "./pages/Shippers";
 import Accounting from "./pages/Accounting";
 import Analytics from "./pages/Analytics";
 import Loads from "./pages/Loads";
-import Contracts from "./pages/Contracts";
-import Trips from "./pages/Trips";
-import TripDetail from "./pages/TripDetail";
-import Vehicles from "./pages/Vehicles";
-import VehicleAccess from "./pages/VehicleAccess";
+// import Contracts from "./pages/Contracts"; // MODULE DISABLED
+// import Trips from "./pages/Trips"; // MODULE DISABLED
+// import TripDetail from "./pages/TripDetail"; // MODULE DISABLED
+// import Vehicles from "./pages/Vehicles"; // MODULE DISABLED
+// import VehicleAccess from "./pages/VehicleAccess"; // MODULE DISABLED
 import Settings from "./pages/Settings";
 import Tickets from "./pages/Tickets";
 import NotFound from "./pages/NotFound";
@@ -58,10 +58,11 @@ function ShipperIdRedirect() {
   return <Navigate to={`/shippers?shipper_id=${encodeURIComponent(shipperId || "")}`} replace />;
 }
 
-function VehicleIdRedirect() {
-  const { vehicleId } = useParams();
-  return <Navigate to={`/vehicles?vehicle_id=${encodeURIComponent(vehicleId || "")}`} replace />;
-}
+// MODULE DISABLED: VehicleIdRedirect
+// function VehicleIdRedirect() {
+//   const { vehicleId } = useParams();
+//   return <Navigate to={`/vehicles?vehicle_id=${encodeURIComponent(vehicleId || "")}`} replace />;
+// }
 
 function AuthErrorHandler() {
   const location = useLocation();
@@ -108,12 +109,12 @@ function AppContent() {
             <Route path="/shippers/:shipperId" element={<ProtectedRoute><ShipperIdRedirect /></ProtectedRoute>} />
             <Route path="/shippers" element={<ProtectedRoute><Shippers /></ProtectedRoute>} />
             <Route path="/loads" element={<ProtectedRoute><Loads /></ProtectedRoute>} />
-            <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
-            <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />
-            <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
-            <Route path="/vehicles/:vehicleId" element={<ProtectedRoute><VehicleIdRedirect /></ProtectedRoute>} />
-            <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
-            <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} />
+            {/* <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
+            {/* <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
+            {/* <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
+            {/* <Route path="/vehicles/:vehicleId" element={<ProtectedRoute><VehicleIdRedirect /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
+            {/* <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
+            {/* <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />

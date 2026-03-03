@@ -21,9 +21,24 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // --------------- CORS ---------------
+const allowedOrigins = [
+    "http://localhost:5173",
+    "https://dispatch-project-livid.vercel.app/"
+];
+
 app.use(
     cors({
-        origin: config.cors.origins,
+        origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+            // Allow requests with no origin (like mobile apps or curl requests)
+            if (!origin) {
+                return callback(null, true);
+            }
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+
+            return callback(new Error("Not allowed by CORS"));
+        },
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "X-Cron-Secret"],

@@ -12,9 +12,9 @@ import {
   LayoutDashboard,
   PackageOpen,
   TicketCheck,
-  FileText,
-  MapPin,
-  KeyRound,
+  FileText, // kept for potential future use
+  MapPin,   // kept for potential future use
+  KeyRound, // kept for potential future use
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,10 @@ const navigation = [
   { name: "Couriers", href: "/couriers", icon: Truck },
   { name: "Shippers", href: "/shippers", icon: Package },
   { name: "Loads", href: "/loads", icon: PackageOpen },
-  { name: "Contracts", href: "/contracts", icon: FileText },
-  { name: "Trips", href: "/trips", icon: MapPin },
-  { name: "Vehicles", href: "/vehicles", icon: Truck },
-  { name: "Vehicle Access", href: "/vehicle-access", icon: KeyRound },
+  // { name: "Contracts", href: "/contracts", icon: FileText }, // MODULE DISABLED
+  // { name: "Trips", href: "/trips", icon: MapPin }, // MODULE DISABLED
+  // { name: "Vehicles", href: "/vehicles", icon: Truck }, // MODULE DISABLED
+  // { name: "Vehicle Access", href: "/vehicle-access", icon: KeyRound }, // MODULE DISABLED
   { name: "Accounting", href: "/accounting", icon: Calculator },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Tickets", href: "/tickets", icon: TicketCheck },

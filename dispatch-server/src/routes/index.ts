@@ -2,13 +2,13 @@ import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
 import { supabaseAdmin } from "../config/supabase";
 import cronRoutes from "./cron";
-import vehicleAccessRoutes from "./vehicle-access";
-import vehicleRoutes from "./vehicles";
+// import vehicleAccessRoutes from "./vehicle-access"; // MODULE DISABLED
+// import vehicleRoutes from "./vehicles"; // MODULE DISABLED
 import courierRoutes from "./couriers";
 import shipperRoutes from "./shippers";
 import loadRoutes from "./loads";
-import contractRoutes from "./contracts";
-import tripRoutes from "./trips";
+// import contractRoutes from "./contracts"; // MODULE DISABLED
+// import tripRoutes from "./trips"; // MODULE DISABLED
 import ticketRoutes from "./tickets";
 import dashboardRoutes from "./dashboard";
 import accountingRoutes from "./accounting";
@@ -66,8 +66,8 @@ router.use(authenticate);
 router.use("/couriers", courierRoutes);
 router.use("/shippers", shipperRoutes);
 router.use("/loads", loadRoutes);
-router.use("/contracts", contractRoutes);
-router.use("/trips", tripRoutes);
+// router.use("/contracts", contractRoutes); // MODULE DISABLED
+// router.use("/trips", tripRoutes); // MODULE DISABLED
 router.use("/tickets", ticketRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/accounting", accountingRoutes);
@@ -75,7 +75,7 @@ router.use("/analytics", analyticsRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/invoices", invoiceRoutes);
 router.use("/saved-loads", savedLoadsRoutes);
-router.use("/vehicles", vehicleRoutes);
-router.use("/vehicle-access", vehicleAccessRoutes);
+// router.use("/vehicles", vehicleRoutes); // MODULE DISABLED
+// router.use("/vehicle-access", vehicleAccessRoutes); // MODULE DISABLED
 
 export default router;
