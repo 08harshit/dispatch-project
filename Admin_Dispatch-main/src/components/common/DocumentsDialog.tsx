@@ -95,7 +95,7 @@ export function DocumentsDialog({
                         documents.map((doc, index) => (
                             <div
                                 key={doc.id ?? index}
-                                className="flex items-center justify-between p-3 rounded-lg border"
+                                className="flex items-center justify-between p-4 rounded-xl border border-border/50 transition-colors hover:bg-muted/30"
                             >
                                 <div className="flex items-center gap-3">
                                     <FileText className="h-5 w-5 text-primary shrink-0" />
@@ -136,7 +136,7 @@ export function DocumentsDialog({
                     {showUpload && onUpload && (
                         <>
                             {showAddForm ? (
-                                <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+                                <div className="space-y-3 p-4 rounded-xl border border-border/50 bg-muted/30">
                                     <div className="space-y-2">
                                         <Label className="text-xs">Name</Label>
                                         <Input

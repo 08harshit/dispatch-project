@@ -74,6 +74,13 @@ export default function Shippers() {
   const dialogs = useDialogManager<Shipper>();
 
   useEffect(() => {
+    const compliance = searchParams.get("compliance");
+    if (compliance === "compliant" || compliance === "non-compliant") {
+      setActiveTab(compliance);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (highlightShipperId) {
       setActiveTab("all");
       setBusinessTypeFilter("all");

@@ -11,15 +11,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Building2, User, Shield, Truck } from "lucide-react";
+import { Building2, User, Shield, Truck, FileText, FileUp } from "lucide-react";
+import { AddressAutocomplete } from "@/components/forms/AddressAutocomplete";
 
 export interface CourierFormData {
   courierName: string;
+  street: string;
+  aptUnit: string;
   address: string;
   city: string;
   state: string;
   zipCode: string;
+  mailingStreet: string;
+  mailingAptUnit: string;
+  mailingCity: string;
+  mailingState: string;
+  mailingZipCode: string;
   businessType: string;
   businessPhone: string;
   fax: string;
@@ -60,12 +69,21 @@ interface AddCourierFormProps {
 
 export function AddCourierForm({ onSuccess, initialData, isEditing = false, editingId }: AddCourierFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mailingSameAsBusiness, setMailingSameAsBusiness] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState<CourierFormData>({
     courierName: "",
+    street: "",
+    aptUnit: "",
     address: "",
     city: "",
     state: "",
     zipCode: "",
+    mailingStreet: "",
+    mailingAptUnit: "",
+    mailingCity: "",
+    mailingState: "",
+    mailingZipCode: "",
     businessType: "",
     businessPhone: "",
     fax: "",
@@ -99,26 +117,74 @@ export function AddCourierForm({ onSuccess, initialData, isEditing = false, edit
 
   useEffect(() => {
     if (initialData) {
-      setFormData(prev => ({ ...prev, ...initialData }));
+      const d = { ...initialData } as Record<string, unknown>;
+      if (d.address && !d.street) {
+        d.street = d.address;
+      }
+      setFormData(prev => ({ ...prev, ...d }));
     }
   }, [initialData]);
 
   const updateField = (field: keyof CourierFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      if (mailingSameAsBusiness && ["street", "aptUnit", "city", "state", "zipCode"].includes(field)) {
+        const mailingMap: Record<string, keyof CourierFormData> = {
+          street: "mailingStreet",
+          aptUnit: "mailingAptUnit",
+          city: "mailingCity",
+          state: "mailingState",
+          zipCode: "mailingZipCode",
+        };
+        if (mailingMap[field]) {
+          (updated as Record<string, string>)[mailingMap[field]] = value;
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleMailingSameToggle = (checked: boolean) => {
+    setMailingSameAsBusiness(checked);
+    if (checked) {
+      setFormData(prev => ({
+        ...prev,
+        mailingStreet: prev.street,
+        mailingAptUnit: prev.aptUnit,
+        mailingCity: prev.city,
+        mailingState: prev.state,
+        mailingZipCode: prev.zipCode,
+      }));
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setUploadedFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setUploadedFiles(prev => [...prev, ...Array.from(e.target.files)]);
+      e.target.value = "";
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    const addressValue = [formData.street, formData.aptUnit].filter(Boolean).join(", ") || formData.address || "";
+    const payload = { ...formData, address: addressValue } as unknown as Record<string, string>;
+
     try {
       if (isEditing && editingId) {
         const { updateCourier } = await import("@/services/courierService");
-        await updateCourier(editingId, formData as unknown as Record<string, string>);
+        await updateCourier(editingId, payload);
         toast.success("Courier updated successfully!");
       } else {
         const { createCourier } = await import("@/services/courierService");
-        await createCourier(formData as unknown as Record<string, string>);
+        await createCourier(payload);
         toast.success("Courier added successfully!");
       }
       onSuccess();
@@ -133,7 +199,7 @@ export function AddCourierForm({ onSuccess, initialData, isEditing = false, edit
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Tabs defaultValue="company" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-auto">
+        <TabsList className="grid w-full grid-cols-5 h-auto">
           <TabsTrigger value="company" className="flex items-center gap-1.5 text-xs py-2">
             <Building2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Company</span>
@@ -150,6 +216,10 @@ export function AddCourierForm({ onSuccess, initialData, isEditing = false, edit
             <Truck className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Equipment</span>
           </TabsTrigger>
+          <TabsTrigger value="documents" className="flex items-center gap-1.5 text-xs py-2">
+            <FileText className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Documents</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Company Info Tab */}
@@ -160,25 +230,58 @@ export function AddCourierForm({ onSuccess, initialData, isEditing = false, edit
               <Input id="courierName" placeholder="Enter courier company name" required value={formData.courierName} onChange={(e) => updateField("courierName", e.target.value)} />
             </div>
 
-            <div className="sm:col-span-2 space-y-2">
-              <Label htmlFor="address">Address</Label>
-              <Textarea id="address" placeholder="Street address" rows={2} value={formData.address} onChange={(e) => updateField("address", e.target.value)} />
+            <AddressAutocomplete
+              label=""
+              idPrefix="courier"
+              values={{
+                street: formData.street || formData.address,
+                aptUnit: formData.aptUnit,
+                city: formData.city,
+                state: formData.state,
+                zipCode: formData.zipCode,
+              }}
+              onUpdate={(field, value) => updateField(field as keyof CourierFormData, value)}
+              fieldMap={{
+                street: "street",
+                aptUnit: "aptUnit",
+                city: "city",
+                state: "state",
+                zipCode: "zipCode",
+              }}
+            />
+
+            <div className="sm:col-span-2 flex items-center space-x-2 pt-2">
+              <Checkbox
+                id="mailingSame"
+                checked={mailingSameAsBusiness}
+                onCheckedChange={(checked) => handleMailingSameToggle(!!checked)}
+              />
+              <Label htmlFor="mailingSame" className="font-normal">
+                Mailing address is the same as business address
+              </Label>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="city">City</Label>
-              <Input id="city" placeholder="City" value={formData.city} onChange={(e) => updateField("city", e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="state">State</Label>
-              <Input id="state" placeholder="State" value={formData.state} onChange={(e) => updateField("state", e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="zipCode">Zip Code</Label>
-              <Input id="zipCode" placeholder="Zip Code" value={formData.zipCode} onChange={(e) => updateField("zipCode", e.target.value)} />
-            </div>
+            {!mailingSameAsBusiness && (
+              <AddressAutocomplete
+                label="Mailing"
+                idPrefix="mailing"
+                values={{
+                  street: formData.mailingStreet,
+                  aptUnit: formData.mailingAptUnit,
+                  city: formData.mailingCity,
+                  state: formData.mailingState,
+                  zipCode: formData.mailingZipCode,
+                }}
+                onUpdate={(field, value) => updateField(field as keyof CourierFormData, value)}
+                fieldMap={{
+                  street: "mailingStreet",
+                  aptUnit: "mailingAptUnit",
+                  city: "mailingCity",
+                  state: "mailingState",
+                  zipCode: "mailingZipCode",
+                }}
+              />
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="businessType">Business Type</Label>
@@ -397,6 +500,54 @@ export function AddCourierForm({ onSuccess, initialData, isEditing = false, edit
               <Textarea id="routes" placeholder="e.g. East Coast, Midwest, Nationwide" rows={3} value={formData.routes} onChange={(e) => updateField("routes", e.target.value)} />
             </div>
           </div>
+        </TabsContent>
+
+        {/* Documents Tab */}
+        <TabsContent value="documents" className="space-y-4 pt-4">
+          <div
+            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors"
+            onDrop={handleFileDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => document.getElementById("courier-file-upload")?.click()}
+          >
+            <FileUp className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-sm font-medium text-muted-foreground">
+              Drag & drop files here, or click to browse
+            </p>
+            <p className="text-xs text-muted-foreground/70 mt-1">
+              PDF, DOC, DOCX, JPG, PNG, WEBP (max 20MB)
+            </p>
+            <input
+              id="courier-file-upload"
+              type="file"
+              multiple
+              className="hidden"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+              onChange={handleFileSelect}
+            />
+          </div>
+
+          {uploadedFiles.length > 0 && (
+            <div className="space-y-2">
+              <Label>Uploaded Files ({uploadedFiles.length})</Label>
+              <div className="space-y-2">
+                {uploadedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 rounded-md border bg-muted/30"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="text-sm truncate">{file.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {(file.size / 1024).toFixed(0)} KB
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

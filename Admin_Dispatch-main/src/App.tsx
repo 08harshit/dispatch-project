@@ -23,6 +23,7 @@ import Vehicles from "./pages/Vehicles";
 import VehicleAccess from "./pages/VehicleAccess";
 import Settings from "./pages/Settings";
 import Tickets from "./pages/Tickets";
+import Communication from "./pages/Communication";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -107,6 +108,7 @@ function AppContent() {
             <Route path="/couriers" element={<ProtectedRoute><Couriers /></ProtectedRoute>} />
             <Route path="/shippers/:shipperId" element={<ProtectedRoute><ShipperIdRedirect /></ProtectedRoute>} />
             <Route path="/shippers" element={<ProtectedRoute><Shippers /></ProtectedRoute>} />
+            <Route path="/communication" element={<ProtectedRoute><Communication /></ProtectedRoute>} />
             <Route path="/loads" element={<ProtectedRoute><Loads /></ProtectedRoute>} />
             <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
             <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />

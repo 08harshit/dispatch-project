@@ -186,6 +186,7 @@ export default function Settings() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="animate-fade-in">
               <div className="flex items-center gap-3">
+                <div className="h-12 w-1.5 rounded-full bg-gradient-to-b from-primary to-primary/50 flex-shrink-0" />
                 <div className="p-2.5 rounded-xl bg-primary/10">
                   <SettingsIcon className="h-6 w-6 text-primary" />
                 </div>

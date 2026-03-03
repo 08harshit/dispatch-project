@@ -9,6 +9,8 @@ export const config = {
         url: process.env.SUPABASE_URL!,
         anonKey: process.env.SUPABASE_ANON_KEY!,
         serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        /** Optional. When set, JWT is verified locally instead of calling Auth API (reduces latency). */
+        jwtSecret: process.env.SUPABASE_JWT_SECRET || undefined,
     },
 
     cors: {

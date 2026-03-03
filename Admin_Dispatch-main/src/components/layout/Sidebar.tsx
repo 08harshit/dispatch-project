@@ -15,6 +15,7 @@ import {
   FileText,
   MapPin,
   KeyRound,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const navigation = [
   { name: "Home", href: "/dashboard", icon: Home },
   { name: "Couriers", href: "/couriers", icon: Truck },
+  { name: "Communication", href: "/communication", icon: MessageCircle },
   { name: "Shippers", href: "/shippers", icon: Package },
   { name: "Loads", href: "/loads", icon: PackageOpen },
   { name: "Contracts", href: "/contracts", icon: FileText },
@@ -53,7 +55,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col border-r border-sidebar-border transition-all duration-300 sidebar-modern",
+        "relative flex h-screen flex-col border-r border-sidebar-border transition-all duration-300 sidebar-modern",
         collapsed ? "w-16" : "w-64"
       )}
     >

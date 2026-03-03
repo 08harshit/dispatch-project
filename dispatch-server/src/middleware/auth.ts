@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
+import { config } from "../config";
 
 // Extend Express Request to include authenticated user
 declare global {
@@ -14,9 +15,31 @@ declare global {
     }
 }
 
+interface JwtPayload {
+    sub: string;
+    email?: string;
+    user_metadata?: { role?: string };
+}
+
+/**
+ * Verify JWT locally when SUPABASE_JWT_SECRET is set (avoids Auth API round-trip).
+ */
+function verifyTokenLocally(token: string): JwtPayload | null {
+    const secret = config.supabase.jwtSecret;
+    if (!secret) return null;
+    try {
+        const jwt = require("jsonwebtoken") as { verify: (t: string, s: string, o: { algorithms: string[] }) => JwtPayload };
+        const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] });
+        return decoded;
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Middleware to authenticate requests using Supabase JWT.
  * Expects: Authorization: Bearer <access_token>
+ * When SUPABASE_JWT_SECRET is set, verifies JWT locally to avoid Auth API latency.
  */
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
@@ -28,6 +51,16 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const token = authHeader.split(" ")[1];
 
     try {
+        const localPayload = verifyTokenLocally(token);
+        if (localPayload) {
+            req.user = {
+                id: localPayload.sub,
+                email: localPayload.email || "",
+                role: localPayload.user_metadata?.role,
+            };
+            return next();
+        }
+
         const { data, error } = await supabaseAdmin.auth.getUser(token);
 
         if (error || !data.user) {
@@ -57,6 +90,15 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
     }
     const token = authHeader.split(" ")[1];
     try {
+        const localPayload = verifyTokenLocally(token);
+        if (localPayload) {
+            req.user = {
+                id: localPayload.sub,
+                email: localPayload.email || "",
+                role: localPayload.user_metadata?.role,
+            };
+            return next();
+        }
         const { data, error } = await supabaseAdmin.auth.getUser(token);
         if (!error && data?.user) {
             req.user = {
