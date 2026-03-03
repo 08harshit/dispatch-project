@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 // --------------- CORS ---------------
 const allowedOrigins = [
     "http://localhost:5173",
-    "https://dispatch-project-livid.vercel.app/"
+    "https://dispatch-project-livid.vercel.app"
 ];
 
 app.use(
