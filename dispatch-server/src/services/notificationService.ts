@@ -45,9 +45,12 @@ export async function processNotificationLog(): Promise<{
         return { processed: list.length, sent: 0, errors: ["RESEND_API_KEY not set; skipping send"] };
     }
 
+    const contractIds = [...new Set(list.filter((r) => r.event_type === "trip_completed" && r.contract_id).map((r) => r.contract_id!))];
+    const contractEmailMap = await buildContractEmailMap(contractIds);
+
     for (const row of list) {
         try {
-            const { to, subject, text } = await buildMessage(row);
+            const { to, subject, text } = buildMessage(row, contractEmailMap);
             if (!to.length) {
                 await markSent(row.id);
                 sent += 1;
@@ -69,28 +72,50 @@ export async function processNotificationLog(): Promise<{
     return { processed: list.length, sent, errors };
 }
 
-async function buildMessage(
-    row: NotificationRow
-): Promise<{ to: string[]; subject: string; text: string }> {
+async function buildContractEmailMap(contractIds: string[]): Promise<Map<string, { courierEmail?: string; shipperEmail?: string }>> {
+    const map = new Map<string, { courierEmail?: string; shipperEmail?: string }>();
+    if (contractIds.length === 0) return map;
+
+    const { data: contracts } = await supabaseAdmin
+        .from("contracts")
+        .select("id, courier_id, shipper_id")
+        .in("id", contractIds);
+
+    if (!contracts?.length) return map;
+
+    const courierIds = [...new Set(contracts.map((c: any) => c.courier_id).filter(Boolean))];
+    const shipperIds = [...new Set(contracts.map((c: any) => c.shipper_id).filter(Boolean))];
+
+    const [couriersRes, shippersRes] = await Promise.all([
+        courierIds.length ? supabaseAdmin.from("couriers").select("id, contact_email").in("id", courierIds) : { data: [] },
+        shipperIds.length ? supabaseAdmin.from("shippers").select("id, contact_email").in("id", shipperIds) : { data: [] },
+    ]);
+
+    const courierMap = new Map((couriersRes.data || []).map((c: any) => [c.id, c.contact_email]));
+    const shipperMap = new Map((shippersRes.data || []).map((s: any) => [s.id, s.contact_email]));
+
+    for (const c of contracts as any[]) {
+        map.set(c.id, {
+            courierEmail: courierMap.get(c.courier_id),
+            shipperEmail: shipperMap.get(c.shipper_id),
+        });
+    }
+    return map;
+}
+
+function buildMessage(
+    row: NotificationRow,
+    contractEmailMap: Map<string, { courierEmail?: string; shipperEmail?: string }>,
+): { to: string[]; subject: string; text: string } {
     const to: string[] = [];
     let subject = "Dispatch notification";
     let text = `Event: ${row.event_type} at ${row.created_at}`;
 
     if (row.event_type === "trip_completed" && row.contract_id) {
-        const { data: contract } = await supabaseAdmin
-            .from("contracts")
-            .select("courier_id, shipper_id")
-            .eq("id", row.contract_id)
-            .single();
-        if (contract) {
-            const [courierRes, shipperRes] = await Promise.all([
-                supabaseAdmin.from("couriers").select("contact_email").eq("id", (contract as any).courier_id).single(),
-                supabaseAdmin.from("shippers").select("contact_email").eq("id", (contract as any).shipper_id).single(),
-            ]);
-            const courierEmail = (courierRes.data as any)?.contact_email;
-            const shipperEmail = (shipperRes.data as any)?.contact_email;
-            if (courierEmail) to.push(courierEmail);
-            if (shipperEmail) to.push(shipperEmail);
+        const emails = contractEmailMap.get(row.contract_id);
+        if (emails) {
+            if (emails.courierEmail) to.push(emails.courierEmail);
+            if (emails.shipperEmail) to.push(emails.shipperEmail);
             subject = "Trip completed";
             text = `Trip (contract ${row.contract_id}) has been completed. ${text}`;
         }

@@ -13,17 +13,25 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Building2, User, FileText, Clock } from "lucide-react";
+import { Building2, User, FileText, Clock, FileUp } from "lucide-react";
 import { createShipper, updateShipper, type CreateShipperPayload } from "@/services/shipperService";
+import { AddressAutocomplete } from "@/components/forms/AddressAutocomplete";
 
 export interface ShipperFormData {
   businessName: string;
   businessType: string;
   yearEstablished: string;
+  street: string;
+  aptUnit: string;
   address: string;
   city: string;
   state: string;
   zipCode: string;
+  mailingStreet: string;
+  mailingAptUnit: string;
+  mailingCity: string;
+  mailingState: string;
+  mailingZipCode: string;
   timezone: string;
   website: string;
   dealerContactEmail: string;
@@ -52,14 +60,23 @@ interface AddShipperFormProps {
 
 export function AddShipperForm({ onSuccess, initialData, isEditing = false }: AddShipperFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mailingSameAsBusiness, setMailingSameAsBusiness] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState<ShipperFormData>({
     businessName: "",
     businessType: "",
     yearEstablished: "",
+    street: "",
+    aptUnit: "",
     address: "",
     city: "",
     state: "",
     zipCode: "",
+    mailingStreet: "",
+    mailingAptUnit: "",
+    mailingCity: "",
+    mailingState: "",
+    mailingZipCode: "",
     timezone: "",
     website: "",
     dealerContactEmail: "",
@@ -82,23 +99,70 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
 
   useEffect(() => {
     if (initialData) {
-      setFormData(prev => ({ ...prev, ...initialData }));
+      const d = { ...initialData } as Record<string, unknown>;
+      if (d.address && !d.street) {
+        d.street = d.address;
+      }
+      setFormData(prev => ({ ...prev, ...d }));
     }
   }, [initialData]);
 
   const updateField = (field: keyof ShipperFormData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      if (mailingSameAsBusiness && typeof value === "string" && ["street", "aptUnit", "city", "state", "zipCode"].includes(field)) {
+        const mailingMap: Record<string, keyof ShipperFormData> = {
+          street: "mailingStreet",
+          aptUnit: "mailingAptUnit",
+          city: "mailingCity",
+          state: "mailingState",
+          zipCode: "mailingZipCode",
+        };
+        if (mailingMap[field]) {
+          (updated as Record<string, unknown>)[mailingMap[field]] = value;
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleMailingSameToggle = (checked: boolean) => {
+    setMailingSameAsBusiness(checked);
+    if (checked) {
+      setFormData(prev => ({
+        ...prev,
+        mailingStreet: prev.street,
+        mailingAptUnit: prev.aptUnit,
+        mailingCity: prev.city,
+        mailingState: prev.state,
+        mailingZipCode: prev.zipCode,
+      }));
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    setUploadedFiles(prev => [...prev, ...files]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setUploadedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+      e.target.value = "";
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const addressValue = [formData.street, formData.aptUnit].filter(Boolean).join(", ") || formData.address || undefined;
       const payload: CreateShipperPayload = {
         name: formData.businessName.trim(),
         contact_email: formData.dealerContactEmail || undefined,
         phone: formData.dealerPhone || undefined,
-        address: formData.address || undefined,
+        address: addressValue,
         business_type: formData.businessType || undefined,
         city: formData.city || undefined,
         state: formData.state || undefined,
@@ -126,7 +190,7 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Tabs defaultValue="business" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-auto">
+        <TabsList className="grid w-full grid-cols-5 h-auto">
           <TabsTrigger value="business" className="flex items-center gap-1.5 text-xs py-2">
             <Building2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Business</span>
@@ -142,6 +206,10 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
           <TabsTrigger value="licenses" className="flex items-center gap-1.5 text-xs py-2">
             <FileText className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Licenses</span>
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="flex items-center gap-1.5 text-xs py-2">
+            <FileUp className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Documents</span>
           </TabsTrigger>
         </TabsList>
 
@@ -171,25 +239,58 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
               <Input id="yearEstablished" type="number" placeholder="2000" min="1900" max="2099" value={formData.yearEstablished} onChange={(e) => updateField("yearEstablished", e.target.value)} />
             </div>
 
-            <div className="sm:col-span-2 space-y-2">
-              <Label htmlFor="address">Address</Label>
-              <Textarea id="address" placeholder="Street address" rows={2} value={formData.address} onChange={(e) => updateField("address", e.target.value)} />
+            <AddressAutocomplete
+              label=""
+              idPrefix="shipper"
+              values={{
+                street: formData.street || formData.address,
+                aptUnit: formData.aptUnit,
+                city: formData.city,
+                state: formData.state,
+                zipCode: formData.zipCode,
+              }}
+              onUpdate={(field, value) => updateField(field as keyof ShipperFormData, value)}
+              fieldMap={{
+                street: "street",
+                aptUnit: "aptUnit",
+                city: "city",
+                state: "state",
+                zipCode: "zipCode",
+              }}
+            />
+
+            <div className="sm:col-span-2 flex items-center space-x-2 pt-2">
+              <Checkbox
+                id="mailingSame"
+                checked={mailingSameAsBusiness}
+                onCheckedChange={(checked) => handleMailingSameToggle(!!checked)}
+              />
+              <Label htmlFor="mailingSame" className="font-normal">
+                Mailing address is the same as business address
+              </Label>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="city">City</Label>
-              <Input id="city" placeholder="City" value={formData.city} onChange={(e) => updateField("city", e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="state">State</Label>
-              <Input id="state" placeholder="State" value={formData.state} onChange={(e) => updateField("state", e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="zipCode">Zip Code</Label>
-              <Input id="zipCode" placeholder="Zip Code" value={formData.zipCode} onChange={(e) => updateField("zipCode", e.target.value)} />
-            </div>
+            {!mailingSameAsBusiness && (
+              <AddressAutocomplete
+                label="Mailing"
+                idPrefix="mailing"
+                values={{
+                  street: formData.mailingStreet,
+                  aptUnit: formData.mailingAptUnit,
+                  city: formData.mailingCity,
+                  state: formData.mailingState,
+                  zipCode: formData.mailingZipCode,
+                }}
+                onUpdate={(field, value) => updateField(field as keyof ShipperFormData, value)}
+                fieldMap={{
+                  street: "mailingStreet",
+                  aptUnit: "mailingAptUnit",
+                  city: "mailingCity",
+                  state: "mailingState",
+                  zipCode: "mailingZipCode",
+                }}
+              />
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
@@ -316,13 +417,54 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
               </Label>
             </div>
           </div>
+        </TabsContent>
 
-          <h4 className="text-sm font-medium text-muted-foreground pt-4">Documents</h4>
-          <div className="space-y-2">
-            <Label htmlFor="docs">Upload Documents</Label>
-            <Input id="docs" type="file" multiple className="cursor-pointer" />
-            <p className="text-xs text-muted-foreground">Upload business licenses, tax exemption certificates, etc.</p>
+        {/* Documents Tab */}
+        <TabsContent value="documents" className="space-y-4 pt-4">
+          <div
+            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors"
+            onDrop={handleFileDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => document.getElementById("shipper-file-upload")?.click()}
+          >
+            <FileUp className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-sm font-medium text-muted-foreground">
+              Drag & drop files here, or click to browse
+            </p>
+            <p className="text-xs text-muted-foreground/70 mt-1">
+              PDF, DOC, DOCX, JPG, PNG, WEBP (max 20MB)
+            </p>
+            <input
+              id="shipper-file-upload"
+              type="file"
+              multiple
+              className="hidden"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+              onChange={handleFileSelect}
+            />
           </div>
+
+          {uploadedFiles.length > 0 && (
+            <div className="space-y-2">
+              <Label>Uploaded Files ({uploadedFiles.length})</Label>
+              <div className="space-y-2">
+                {uploadedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 rounded-md border bg-muted/30"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="text-sm truncate">{file.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {(file.size / 1024).toFixed(0)} KB
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

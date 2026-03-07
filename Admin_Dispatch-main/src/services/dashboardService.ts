@@ -1,4 +1,10 @@
-import { apiGet } from "./api";
+import { apiGet, apiPatch, apiDelete } from "./api";
+
+export interface DashboardOverview {
+    stats: DashboardStats;
+    recentActivity: RecentActivityItem[];
+    alerts: DashboardAlert[];
+}
 
 export interface DashboardStats {
     totalCouriers: number;
@@ -28,6 +34,27 @@ export interface DashboardAlert {
     time: string;
 }
 
+export async function fetchDashboardOverview(): Promise<DashboardOverview> {
+    const res = await apiGet<DashboardOverview>("/dashboard/overview");
+    if (!res.success || !res.data) {
+        return {
+            stats: {
+                totalCouriers: 0,
+                totalShippers: 0,
+                totalTransactions: 0,
+                activeAlerts: 0,
+                couriersCompliant: 0,
+                couriersNonCompliant: 0,
+                shippersCompliant: 0,
+                shippersNonCompliant: 0,
+            },
+            recentActivity: [],
+            alerts: [],
+        };
+    }
+    return res.data;
+}
+
 export async function fetchDashboardStats(): Promise<DashboardStats> {
     const res = await apiGet<DashboardStats>("/dashboard/stats");
     if (!res.success || !res.data) {
@@ -55,4 +82,12 @@ export async function fetchDashboardAlerts(): Promise<DashboardAlert[]> {
     const res = await apiGet<DashboardAlert[]>("/dashboard/alerts");
     if (!res.success || !Array.isArray(res.data)) return [];
     return res.data;
+}
+
+export async function markAlertRead(id: string): Promise<void> {
+    await apiPatch(`/dashboard/alerts/${id}/read`);
+}
+
+export async function dismissAlert(id: string): Promise<void> {
+    await apiDelete(`/dashboard/alerts/${id}`);
 }

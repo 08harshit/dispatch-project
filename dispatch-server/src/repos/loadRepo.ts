@@ -120,28 +120,26 @@ export async function update(id: string, payload: UpdateLeadPayload): Promise<Le
 }
 
 export async function getStats() {
-    const [leadsRes, tripsRes] = await Promise.all([
-        getTable("leads").select("status"),
-        getTable("trips").select("status")
+    const [totalRes, pendingRes, cancelledRes, inTransitRes, deliveredRes] = await Promise.all([
+        getTable("leads").select("id", { count: "exact", head: true }),
+        getTable("leads").select("id", { count: "exact", head: true }).eq("status", "open"),
+        getTable("leads").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
+        getTable("trips").select("id", { count: "exact", head: true }).eq("status", "in_progress"),
+        getTable("trips").select("id", { count: "exact", head: true }).eq("status", "completed"),
     ]);
 
-    const leads = leadsRes.data || [];
-    const trips = tripsRes.data || [];
-
-    const byLeadStatus = leads.reduce((acc: Record<string, number>, r: any) => {
-        acc[r.status || "open"] = (acc[r.status || "open"] || 0) + 1;
-        return acc;
-    }, {});
-
-    const inTransit = trips.filter((t: any) => t.status === "in_progress").length;
-    const delivered = trips.filter((t: any) => t.status === "completed").length;
+    const total = totalRes.count ?? 0;
+    const pending = pendingRes.count ?? 0;
+    const cancelled = cancelledRes.count ?? 0;
+    const inTransit = inTransitRes.count ?? 0;
+    const delivered = deliveredRes.count ?? 0;
 
     return {
-        total: leads.length,
+        total,
         inTransit,
         delivered,
-        pending: byLeadStatus["open"] || 0,
-        cancelled: byLeadStatus["cancelled"] || 0,
-        alerts: byLeadStatus["open"] || 0,
+        pending,
+        cancelled,
+        alerts: pending,
     };
 }

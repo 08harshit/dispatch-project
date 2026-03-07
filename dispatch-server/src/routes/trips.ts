@@ -37,11 +37,12 @@ router.get("/", async (req: Request, res: Response) => {
         const { contract_id, courier_id, status } = req.query;
         let query = supabaseAdmin
             .from("trips")
-            .select("*")
+            .select("*, contracts(*, leads(*), couriers(name), shippers(name))")
             .order("created_at", { ascending: false });
 
         if (contract_id) query = query.eq("contract_id", contract_id as string);
         if (status) query = query.eq("status", status as string);
+        if (courier_id) query = query.eq("contracts.courier_id", courier_id as string);
 
         const { data: rows, error } = await query;
 
@@ -53,42 +54,17 @@ router.get("/", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: error.message });
         }
 
-        let trips = rows || [];
-        if (courier_id) {
-            const contractIds = (trips as any[]).map((t: any) => t.contract_id);
-            if (contractIds.length > 0) {
-                const { data: contracts } = await supabaseAdmin
-                    .from("contracts")
-                    .select("id")
-                    .eq("courier_id", courier_id as string)
-                    .in("id", contractIds);
-                const ids = new Set((contracts || []).map((c: any) => c.id));
-                trips = (trips as any[]).filter((t: any) => ids.has(t.contract_id));
-            } else {
-                trips = [];
-            }
-        }
-
-        const contractIds = [...new Set((trips as any[]).map((t: any) => t.contract_id))];
-        const { data: contractsList } = contractIds.length
-            ? await supabaseAdmin.from("contracts").select("id, lead_id, courier_id, shipper_id, amount, pickup_time, start_location, end_location, status").in("id", contractIds)
-            : { data: [] };
-        const contractsMap = new Map((contractsList || []).map((c: any) => [c.id, c]));
-        const leadIds = [...new Set((contractsList || []).map((c: any) => c.lead_id).filter(Boolean))];
-        let leadsMap: Record<string, any> = {};
-        if (leadIds.length > 0) {
-            const { data: leads } = await supabaseAdmin.from("leads").select("*").in("id", leadIds);
-            for (const l of leads || []) {
-                leadsMap[(l as any).id] = l;
-            }
-        }
-
-        const out = (trips as any[]).map((t: any) => {
-            const contract = contractsMap.get(t.contract_id) || null;
+        const out = (rows || []).map((t: any) => {
+            const contractRow = t.contracts ?? null;
+            const lead = contractRow?.leads ?? null;
+            const { contracts, ...trip } = t;
+            const contract = contractRow
+                ? (({ leads: _l, couriers: _c, shippers: _s, ...c }) => c)(contractRow)
+                : null;
             return {
-                ...t,
+                ...trip,
                 contract,
-                lead: contract?.lead_id ? leadsMap[contract.lead_id] : null,
+                lead,
             };
         });
         res.json({ success: true, data: out });
@@ -108,12 +84,16 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { data: trip, error } = await supabaseAdmin
-            .from("trips")
-            .select("*")
-            .eq("id", id)
-            .single();
+        const [tripRes, eventsRes] = await Promise.all([
+            supabaseAdmin
+                .from("trips")
+                .select("*, contracts(*, leads(*), couriers(name), shippers(name))")
+                .eq("id", id)
+                .single(),
+            supabaseAdmin.from("trip_events").select("*").eq("trip_id", id).order("occurred_at", { ascending: true }),
+        ]);
 
+        const { data: trip, error } = tripRes;
         if (error) {
             if (isMissingTableError(error)) {
                 return res.status(404).json({ success: false, error: "Trip not found" });
@@ -125,24 +105,17 @@ router.get("/:id", async (req: Request, res: Response) => {
         }
 
         const c = trip as any;
-        const [contractRes, eventsRes, leadRes] = await Promise.all([
-            supabaseAdmin.from("contracts").select("*").eq("id", c.contract_id).single(),
-            supabaseAdmin.from("trip_events").select("*").eq("trip_id", id).order("occurred_at", { ascending: true }),
-            supabaseAdmin.from("contracts").select("lead_id").eq("id", c.contract_id).single(),
-        ]);
+        const contractRow = c.contracts ?? null;
+        const lead = contractRow?.leads ?? null;
+        const contract = contractRow
+            ? (({ leads: _l, couriers: _c, shippers: _s, ...ct }) => ct)(contractRow)
+            : null;
 
-        const contract = contractRes.data as any;
-        const leadId = (leadRes.data as any)?.lead_id;
-        let lead = null;
-        if (leadId) {
-            const lr = await supabaseAdmin.from("leads").select("*").eq("id", leadId).single();
-            lead = lr.data;
-        }
-
+        const { contracts: _c, ...tripData } = c;
         res.json({
             success: true,
             data: {
-                ...trip,
+                ...tripData,
                 contract,
                 lead,
                 events: eventsRes.data || [],

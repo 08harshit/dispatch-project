@@ -37,7 +37,7 @@ router.get("/", async (req: Request, res: Response) => {
         const { courier_id, shipper_id, status } = req.query;
         let query = supabaseAdmin
             .from("contracts")
-            .select("*")
+            .select("*, leads(id, listing_id, pickup_address, delivery_address, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, status), couriers(id, name), shippers(id, name)")
             .order("created_at", { ascending: false });
 
         if (courier_id) query = query.eq("courier_id", courier_id as string);
@@ -54,27 +54,15 @@ router.get("/", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: error.message });
         }
 
-        const contracts = rows || [];
-        const leadIds = [...new Set((contracts as any[]).map((c: any) => c.lead_id).filter(Boolean))];
-        const courierIds = [...new Set((contracts as any[]).map((c: any) => c.courier_id).filter(Boolean))];
-        const shipperIds = [...new Set((contracts as any[]).map((c: any) => c.shipper_id).filter(Boolean))];
-
-        const [leadsRes, couriersRes, shippersRes] = await Promise.all([
-            leadIds.length ? supabaseAdmin.from("leads").select("id, listing_id, pickup_address, delivery_address, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, status").in("id", leadIds) : { data: [] },
-            courierIds.length ? supabaseAdmin.from("couriers").select("id, name").in("id", courierIds) : { data: [] },
-            shipperIds.length ? supabaseAdmin.from("shippers").select("id, name").in("id", shipperIds) : { data: [] },
-        ]);
-
-        const leadsMap = new Map((leadsRes.data || []).map((l: any) => [l.id, l]));
-        const couriersMap = new Map((couriersRes.data || []).map((c: any) => [c.id, c.name]));
-        const shippersMap = new Map((shippersRes.data || []).map((s: any) => [s.id, s.name]));
-
-        const data = (contracts as any[]).map((c: any) => ({
-            ...c,
-            lead: leadsMap.get(c.lead_id) || null,
-            courierName: couriersMap.get(c.courier_id),
-            shipperName: shippersMap.get(c.shipper_id),
-        }));
+        const data = (rows || []).map((c: any) => {
+            const { leads, couriers, shippers, ...rest } = c;
+            return {
+                ...rest,
+                lead: leads ?? null,
+                courierName: couriers?.name ?? null,
+                shipperName: shippers?.name ?? null,
+            };
+        });
         res.json({ success: true, data });
     } catch (err: any) {
         logger.error({ err }, "Error in GET /contracts");
@@ -92,9 +80,9 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { data: contract, error } = await supabaseAdmin
+        const { data: row, error } = await supabaseAdmin
             .from("contracts")
-            .select("*")
+            .select("*, leads(*), couriers(id, name), shippers(id, name)")
             .eq("id", id)
             .single();
 
@@ -104,21 +92,16 @@ router.get("/:id", async (req: Request, res: Response) => {
             }
             return res.status(500).json({ success: false, error: error.message });
         }
-        if (!contract) {
+        if (!row) {
             return res.status(404).json({ success: false, error: "Contract not found" });
         }
 
-        const [leadRes, courierRes, shipperRes] = await Promise.all([
-            supabaseAdmin.from("leads").select("*").eq("id", (contract as any).lead_id).single(),
-            supabaseAdmin.from("couriers").select("id, name").eq("id", (contract as any).courier_id).single(),
-            supabaseAdmin.from("shippers").select("id, name").eq("id", (contract as any).shipper_id).single(),
-        ]);
-
+        const { leads, couriers, shippers, ...contract } = row as any;
         const out = {
             ...contract,
-            lead: leadRes.data,
-            courierName: (courierRes.data as any)?.name,
-            shipperName: (shipperRes.data as any)?.name,
+            lead: leads ?? null,
+            courierName: couriers?.name ?? null,
+            shipperName: shippers?.name ?? null,
         };
         res.json({ success: true, data: out });
     } catch (err: any) {
@@ -224,6 +207,15 @@ router.post("/", async (req: Request, res: Response) => {
                 exp_dt: exp,
                 is_active: true,
             });
+        }
+
+        const { error: notifError } = await supabaseAdmin.from("notification_log").insert({
+            event_type: "courier_assigned",
+            trip_id: (trip as any).id,
+            contract_id: (contract as any).id,
+        });
+        if (notifError) {
+            logger.warn({ err: notifError }, "Failed to insert courier_assigned alert; contract created");
         }
 
         res.status(201).json({

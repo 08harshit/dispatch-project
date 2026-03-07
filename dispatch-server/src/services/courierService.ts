@@ -149,13 +149,13 @@ export async function getCourier(id: string) {
 /* ------------------------------------------------------------------ */
 
 export async function getStats(): Promise<CourierStats> {
-    const all = await courierRepo.findAllForStats();
+    const { total, active, compliant, new: newCount } = await courierRepo.getStatsCounts();
     return {
-        total: all.length,
-        active: all.filter(c => c.status === "active").length,
-        compliant: all.filter(c => c.compliance === "compliant").length,
-        nonCompliant: all.filter(c => c.compliance === "non-compliant").length,
-        new: all.filter(c => c.is_new === true).length,
+        total,
+        active,
+        compliant,
+        nonCompliant: total - compliant,
+        new: newCount,
     };
 }
 
@@ -369,15 +369,12 @@ export async function setCourierPassword(id: string, password: string): Promise<
     const email = courier.contact_email;
     if (!email) throw new Error("Courier has no email — cannot set auth password");
 
-    // Import supabaseAdmin only for auth operations
     const { supabaseAdmin } = await import("../config/supabase");
+    const { getUserByEmail } = await import("../utils/authHelpers");
 
-    // Check if auth user already exists for this email
-    const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = userList?.users?.find(u => u.email === email);
+    const existingUser = await getUserByEmail(supabaseAdmin, email);
 
     if (existingUser) {
-        // Update existing auth user's password
         const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
             existingUser.id,
             { password },

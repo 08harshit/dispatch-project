@@ -220,16 +220,26 @@ export async function findById(id: string): Promise<DbResult<CourierRow>> {
     return toResult<CourierRow>(data as CourierRow | null, error);
 }
 
-/** Fetch basic status/compliance/is_new for stats aggregation. */
-export async function findAllForStats(): Promise<
-    { status: string; compliance: string; is_new: boolean }[]
-> {
-    const { data, error } = await getTable("couriers")
-        .select("status, compliance, is_new")
-        .is("deleted_at", null);
+/** Fetch stats using count queries instead of full table scan. */
+export async function getStatsCounts(): Promise<{
+    total: number;
+    active: number;
+    compliant: number;
+    new: number;
+}> {
+    const [totalRes, activeRes, compliantRes, newRes] = await Promise.all([
+        getTable("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+        getTable("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "active"),
+        getTable("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("compliance", "compliant"),
+        getTable("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_new", true),
+    ]);
 
-    if (error) throw new Error(error.message);
-    return (data || []) as { status: string; compliance: string; is_new: boolean }[];
+    return {
+        total: totalRes.count ?? 0,
+        active: activeRes.count ?? 0,
+        compliant: compliantRes.count ?? 0,
+        new: newRes.count ?? 0,
+    };
 }
 
 /** Insert a new courier row and return the created record. */

@@ -36,12 +36,15 @@ export default function VehicleAccess() {
   return (
     <MainLayout>
       <div className="space-y-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Vehicle Access</h1>
-            <p className="text-muted-foreground">
-              Time-bound vehicle access for shippers during trips
-            </p>
+        <div className="page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-fade-in relative">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-1.5 rounded-full bg-gradient-to-b from-primary to-primary/50" />
+            <div>
+              <h1 className="text-3xl font-bold text-foreground tracking-tight">Vehicle Access</h1>
+              <p className="mt-1 text-muted-foreground">
+                Time-bound vehicle access for shippers during trips
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -61,11 +64,16 @@ export default function VehicleAccess() {
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <KeyRound className="h-5 w-5" />
-              Access Records
+        <Card className="overflow-hidden border-0 shadow-elevated bg-card/80 backdrop-blur-sm">
+          <CardHeader className="pb-4 bg-gradient-to-r from-muted/50 to-transparent">
+            <CardTitle className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                <KeyRound className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <span className="text-xl font-bold">Access Records</span>
+                <p className="text-xs text-muted-foreground font-normal">Time-bound vehicle access for shippers during trips</p>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>

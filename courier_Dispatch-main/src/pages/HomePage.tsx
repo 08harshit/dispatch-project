@@ -83,10 +83,10 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
   };
 
   const stats = [
-    { label: 'Active Shipments', value: '24', change: '+12%', icon: Package, color: 'amber' },
-    { label: 'Revenue', value: '$45,280', change: '+8%', icon: DollarSign, color: 'emerald' },
-    { label: 'Total Clients', value: '156', change: '+5%', icon: Users, color: 'amber' },
-    { label: 'On-Time Rate', value: '94.2%', change: '+2%', icon: Clock, color: 'emerald' },
+    { label: 'Active Shipments', value: '24', change: '+12%', icon: Package, color: 'amber', page: 'loads' as const },
+    { label: 'Revenue', value: '$45,280', change: '+8%', icon: DollarSign, color: 'emerald', page: 'accounting' as const },
+    { label: 'Total Clients', value: '156', change: '+5%', icon: Users, color: 'amber', page: 'communication' as const },
+    { label: 'On-Time Rate', value: '94.2%', change: '+2%', icon: Clock, color: 'emerald', page: 'analytics' as const },
   ];
 
   const recentActivity = [
@@ -122,10 +122,12 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
         {stats.map((stat, i) => {
           const isEmerald = stat.color === 'emerald';
           return (
-            <div 
+            <button
               key={i}
+              type="button"
+              onClick={() => onNavigate?.(stat.page)}
               className={cn(
-                "group p-4 bg-white border rounded-xl hover:shadow-md transition-all duration-300",
+                "group p-4 bg-white border rounded-xl hover:shadow-md transition-all duration-300 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2",
                 isEmerald ? "border-emerald-100 hover:border-emerald-200" : "border-amber-100 hover:border-amber-200"
               )}
             >
@@ -148,7 +150,7 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               </div>
               <p className="text-xs text-stone-400 font-medium">{stat.label}</p>
               <p className="text-xl font-bold text-stone-700">{stat.value}</p>
-            </div>
+            </button>
           );
         })}
       </div>

@@ -132,6 +132,8 @@ export default function Contracts() {
   return (
     <MainLayout>
       <div className="space-y-8 relative">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-radial from-primary/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-40 left-0 w-64 h-64 bg-gradient-radial from-success/10 to-transparent rounded-full blur-3xl pointer-events-none" />
         <div className="page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-fade-in relative">
           <div className="flex items-center gap-4">
             <div className="relative">

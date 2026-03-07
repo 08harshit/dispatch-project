@@ -14,6 +14,178 @@ const router = Router();
 
 /**
  * @swagger
+ * /dashboard/overview:
+ *   get:
+ *     summary: Get dashboard stats, recent activity, and alerts in one request
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: Combined dashboard data
+ */
+router.get("/overview", async (_req: Request, res: Response) => {
+    const emptyStats = {
+        totalCouriers: 0,
+        totalShippers: 0,
+        totalTransactions: 0,
+        activeAlerts: 0,
+        couriersCompliant: 0,
+        couriersNonCompliant: 0,
+        shippersCompliant: 0,
+        shippersNonCompliant: 0,
+    };
+    try {
+        const [statsRes, recentRes, alertsRes] = await Promise.all([
+            fetchStats(),
+            fetchRecentActivity(),
+            fetchAlerts(),
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                stats: statsRes ?? emptyStats,
+                recentActivity: recentRes ?? [],
+                alerts: alertsRes ?? [],
+            },
+        });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /dashboard/overview");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
+});
+
+async function fetchStats(): Promise<{
+    totalCouriers: number;
+    totalShippers: number;
+    totalTransactions: number;
+    activeAlerts: number;
+    couriersCompliant: number;
+    couriersNonCompliant: number;
+    shippersCompliant: number;
+    shippersNonCompliant: number;
+} | null> {
+    const empty = {
+        totalCouriers: 0,
+        totalShippers: 0,
+        totalTransactions: 0,
+        activeAlerts: 0,
+        couriersCompliant: 0,
+        couriersNonCompliant: 0,
+        shippersCompliant: 0,
+        shippersNonCompliant: 0,
+    };
+    const [totalCouriersRes, totalShippersRes, totalInvoicesRes, couriersCompliantRes, shippersCompliantRes] = await Promise.all([
+        supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+        supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+        supabaseAdmin.from("invoices").select("id", { count: "exact", head: true }),
+        supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).eq("compliance", "compliant").is("deleted_at", null),
+        supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).eq("compliance", "compliant").is("deleted_at", null),
+    ]);
+    if (totalCouriersRes.error && isMissingTableError(totalCouriersRes.error)) return empty;
+    if (totalCouriersRes.error) throw totalCouriersRes.error;
+    const totalCouriers = totalCouriersRes.count ?? 0;
+    const totalShippers = totalShippersRes.count ?? 0;
+    const totalTransactions = totalInvoicesRes.count ?? 0;
+    const couriersCompliant = couriersCompliantRes.count ?? 0;
+    const shippersCompliant = shippersCompliantRes.count ?? 0;
+    return {
+        ...empty,
+        totalCouriers,
+        totalShippers,
+        totalTransactions,
+        couriersCompliant,
+        couriersNonCompliant: totalCouriers - couriersCompliant,
+        shippersCompliant,
+        shippersNonCompliant: totalShippers - shippersCompliant,
+    };
+}
+
+async function fetchRecentActivity(): Promise<Array<{ id: string; entity: string; entityType: string; action: string; status: string; date: string }>> {
+    const { data: contracts, error } = await supabaseAdmin
+        .from("contracts")
+        .select("id, status, created_at, courier_id, shipper_id, couriers(name), shippers(name)")
+        .order("created_at", { ascending: false })
+        .limit(10);
+    if (error && isMissingTableError(error)) return [];
+    if (error) throw error;
+    const list = (contracts || []) as Array<{
+        id: string;
+        status: string;
+        created_at: string;
+        couriers?: { name: string } | { name: string }[] | null;
+        shippers?: { name: string } | { name: string }[] | null;
+    }>;
+    return list.map((c) => {
+        const courierName = Array.isArray(c.couriers) ? c.couriers[0]?.name : c.couriers?.name;
+        const shipperName = Array.isArray(c.shippers) ? c.shippers[0]?.name : c.shippers?.name;
+        const entity = courierName || shipperName || "Unknown";
+        const entityType = courierName ? "courier" : "shipper";
+        return {
+            id: c.id,
+            entity,
+            entityType,
+            action: "Contract " + (c.status === "signed" || c.status === "active" ? "signed" : c.status),
+            status: c.status === "completed" ? "completed" : c.status === "cancelled" ? "failed" : "pending",
+            date: c.created_at ? new Date(c.created_at).toLocaleDateString() : "",
+        };
+    });
+}
+
+async function fetchAlerts(): Promise<Array<{ id: string; title: string; description: string; type: "info"; time: string }>> {
+    const { data: rows, error } = await supabaseAdmin
+        .from("notification_log")
+        .select("id, event_type, trip_id, contract_id, created_at")
+        .is("dismissed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(50);
+    if (error && isMissingTableError(error)) return [];
+    if (error) throw error;
+    const list = (rows || []) as { id: string; event_type: string; contract_id: string | null; created_at: string }[];
+    if (list.length === 0) return [];
+    const contractIds = [...new Set(list.map((r) => r.contract_id).filter(Boolean))] as string[];
+    const { data: contracts } = await supabaseAdmin
+        .from("contracts")
+        .select("id, start_location, end_location, lead_id, courier_id, shipper_id, leads(vehicle_vin), couriers(name), shippers(name)")
+        .in("id", contractIds);
+    const contractsMap = new Map((contracts || []).map((c: Record<string, unknown>) => [c.id as string, c]));
+    return list.map((row) => {
+        const contract = row.contract_id ? contractsMap.get(row.contract_id) : null;
+        const leads = contract?.leads as { vehicle_vin?: string } | { vehicle_vin?: string }[] | undefined;
+        const vin = (Array.isArray(leads) ? leads[0]?.vehicle_vin : leads?.vehicle_vin) || "";
+        const couriers = contract?.couriers as { name?: string } | { name?: string }[] | undefined;
+        const courierName = (Array.isArray(couriers) ? couriers[0]?.name : couriers?.name) || null;
+        const route = contract ? `${contract.start_location || "?"} to ${contract.end_location || "?"}` : "";
+        let title = "Notification";
+        let description = "";
+        if (row.event_type === "courier_assigned") {
+            title = "Load Assigned to Courier";
+            description = courierName
+                ? `Courier ${courierName} assigned load with VIN ${vin || "N/A"} for trip ${route}`
+                : `Load assigned for trip ${route}`;
+        } else if (row.event_type === "trip_started") {
+            title = "Trip Started";
+            description = `Pickup scan recorded for trip ${route}`;
+        } else if (row.event_type === "trip_completed") {
+            title = "Trip Completed";
+            description = `Delivery confirmed for trip ${route}`;
+        } else {
+            description = `Event: ${row.event_type}`;
+        }
+        return {
+            id: row.id,
+            title,
+            description,
+            type: "info" as const,
+            time: formatRelativeTime(row.created_at),
+        };
+    });
+}
+
+/**
+ * @swagger
  * /dashboard/stats:
  *   get:
  *     summary: Get dashboard aggregate stats
@@ -34,35 +206,28 @@ router.get("/stats", async (_req: Request, res: Response) => {
         shippersNonCompliant: 0,
     };
     try {
-        const [couriersRes, shippersRes, invoicesRes] = await Promise.all([
-            supabaseAdmin.from("couriers").select("id, compliance"),
-            supabaseAdmin.from("shippers").select("id, compliance"),
-            supabaseAdmin.from("invoices").select("id"),
+        const [totalCouriersRes, totalShippersRes, totalInvoicesRes, couriersCompliantRes, shippersCompliantRes] = await Promise.all([
+            supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+            supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+            supabaseAdmin.from("invoices").select("id", { count: "exact", head: true }),
+            supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).eq("compliance", "compliant").is("deleted_at", null),
+            supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).eq("compliance", "compliant").is("deleted_at", null),
         ]);
 
-        if (couriersRes.error && isMissingTableError(couriersRes.error)) {
+        if (totalCouriersRes.error && isMissingTableError(totalCouriersRes.error)) {
             return res.json({ success: true, data: empty });
         }
-        if (couriersRes.error) {
-            logger.error({ err: couriersRes.error }, "Dashboard stats couriers");
-            return res.status(500).json({ success: false, error: couriersRes.error.message });
-        }
-        if (shippersRes.error && isMissingTableError(shippersRes.error)) {
-            return res.json({ success: true, data: empty });
-        }
-        if (shippersRes.error) {
-            logger.error({ err: shippersRes.error }, "Dashboard stats shippers");
-            return res.status(500).json({ success: false, error: shippersRes.error.message });
+        if (totalCouriersRes.error) {
+            logger.error({ err: totalCouriersRes.error }, "Dashboard stats");
+            return res.status(500).json({ success: false, error: totalCouriersRes.error.message });
         }
 
-        const couriers = couriersRes.data || [];
-        const shippers = shippersRes.data || [];
-        const totalCouriers = couriers.length;
-        const totalShippers = shippers.length;
-        const totalTransactions = (invoicesRes.data || []).length;
-        const couriersCompliant = couriers.filter((c: { compliance?: string }) => c.compliance === "compliant").length;
+        const totalCouriers = totalCouriersRes.count ?? 0;
+        const totalShippers = totalShippersRes.count ?? 0;
+        const totalTransactions = totalInvoicesRes.count ?? 0;
+        const couriersCompliant = couriersCompliantRes.count ?? 0;
+        const shippersCompliant = shippersCompliantRes.count ?? 0;
         const couriersNonCompliant = totalCouriers - couriersCompliant;
-        const shippersCompliant = shippers.filter((s: { compliance?: string }) => s.compliance === "compliant").length;
         const shippersNonCompliant = totalShippers - shippersCompliant;
 
         res.json({
@@ -101,7 +266,7 @@ router.get("/recent-activity", async (_req: Request, res: Response) => {
     try {
         const { data: contracts, error } = await supabaseAdmin
             .from("contracts")
-            .select("id, status, created_at, courier_id, shipper_id")
+            .select("id, status, created_at, courier_id, shipper_id, couriers(name), shippers(name)")
             .order("created_at", { ascending: false })
             .limit(10);
 
@@ -113,24 +278,30 @@ router.get("/recent-activity", async (_req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: error.message });
         }
 
-        const list = contracts || [];
-        const courierIds = [...new Set(list.map((c: { courier_id?: string }) => c.courier_id).filter(Boolean))];
-        const shipperIds = [...new Set(list.map((c: { shipper_id?: string }) => c.shipper_id).filter(Boolean))];
-        const [couriersRes, shippersRes] = await Promise.all([
-            courierIds.length ? supabaseAdmin.from("couriers").select("id, name").in("id", courierIds) : { data: [] },
-            shipperIds.length ? supabaseAdmin.from("shippers").select("id, name").in("id", shipperIds) : { data: [] },
-        ]);
-        const courierNames = new Map((couriersRes.data || []).map((c: { id: string; name: string }) => [c.id, c.name]));
-        const shipperNames = new Map((shippersRes.data || []).map((s: { id: string; name: string }) => [s.id, s.name]));
+        const list = (contracts || []) as unknown as Array<{
+            id: string;
+            status: string;
+            created_at: string;
+            courier_id?: string;
+            shipper_id?: string;
+            couriers?: { name: string } | { name: string }[] | null;
+            shippers?: { name: string } | { name: string }[] | null;
+        }>;
 
-        const data = list.map((c: { id: string; status: string; created_at: string; courier_id?: string; shipper_id?: string }) => ({
-            id: c.id,
-            entity: courierNames.get(c.courier_id ?? "") || shipperNames.get(c.shipper_id ?? "") || "Unknown",
-            entityType: courierNames.has(c.courier_id ?? "") ? "courier" : "shipper",
-            action: "Contract " + (c.status === "signed" || c.status === "active" ? "signed" : c.status),
-            status: c.status === "completed" ? "completed" : c.status === "cancelled" ? "failed" : "pending",
-            date: c.created_at ? new Date(c.created_at).toLocaleDateString() : "",
-        }));
+        const data = list.map((c) => {
+            const courierName = Array.isArray(c.couriers) ? c.couriers[0]?.name : c.couriers?.name;
+            const shipperName = Array.isArray(c.shippers) ? c.shippers[0]?.name : c.shippers?.name;
+            const entity = courierName || shipperName || "Unknown";
+            const entityType = courierName ? "courier" : "shipper";
+            return {
+                id: c.id,
+                entity,
+                entityType,
+                action: "Contract " + (c.status === "signed" || c.status === "active" ? "signed" : c.status),
+                status: c.status === "completed" ? "completed" : c.status === "cancelled" ? "failed" : "pending",
+                date: c.created_at ? new Date(c.created_at).toLocaleDateString() : "",
+            };
+        });
         res.json({ success: true, data });
     } catch (err: unknown) {
         logger.error({ err }, "Error in GET /dashboard/recent-activity");
@@ -140,6 +311,20 @@ router.get("/recent-activity", async (_req: Request, res: Response) => {
         });
     }
 });
+
+function formatRelativeTime(createdAt: string): string {
+    const now = new Date();
+    const then = new Date(createdAt);
+    const diffMs = now.getTime() - then.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+    return then.toLocaleDateString();
+}
 
 /**
  * @swagger
@@ -151,8 +336,79 @@ router.get("/recent-activity", async (_req: Request, res: Response) => {
  *       200:
  *         description: Alert list
  */
-router.get("/alerts", (_req: Request, res: Response) => {
-    res.json({ success: true, data: [] });
+router.get("/alerts", async (_req: Request, res: Response) => {
+    try {
+        const { data: rows, error } = await supabaseAdmin
+            .from("notification_log")
+            .select("id, event_type, trip_id, contract_id, created_at")
+            .is("dismissed_at", null)
+            .order("created_at", { ascending: false })
+            .limit(50);
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, data: [] });
+            }
+            logger.error({ err: error }, "Dashboard alerts");
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const list = (rows || []) as { id: string; event_type: string; trip_id: string | null; contract_id: string | null; created_at: string }[];
+        if (list.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const contractIds = [...new Set(list.map((r) => r.contract_id).filter(Boolean))] as string[];
+        const { data: contracts } = await supabaseAdmin
+            .from("contracts")
+            .select("id, start_location, end_location, lead_id, courier_id, shipper_id, leads(vehicle_vin), couriers(name), shippers(name)")
+            .in("id", contractIds);
+
+        const contractsMap = new Map((contracts || []).map((c: Record<string, unknown>) => [c.id as string, c]));
+
+        const data = list.map((row) => {
+            const contract = row.contract_id ? (contractsMap.get(row.contract_id) as Record<string, unknown>) : null;
+            const leads = contract?.leads as { vehicle_vin?: string } | { vehicle_vin?: string }[] | undefined;
+            const vin = (Array.isArray(leads) ? leads[0]?.vehicle_vin : leads?.vehicle_vin) || "";
+            const couriers = contract?.couriers as { name?: string } | { name?: string }[] | undefined;
+            const courierName = (Array.isArray(couriers) ? couriers[0]?.name : couriers?.name) || null;
+            const route = contract ? `${contract.start_location || "?"} to ${contract.end_location || "?"}` : "";
+
+            let title = "Notification";
+            let description = "";
+
+            if (row.event_type === "courier_assigned") {
+                title = "Load Assigned to Courier";
+                description = courierName
+                    ? `Courier ${courierName} assigned load with VIN ${vin || "N/A"} for trip ${route}`
+                    : `Load assigned for trip ${route}`;
+            } else if (row.event_type === "trip_started") {
+                title = "Trip Started";
+                description = `Pickup scan recorded for trip ${route}`;
+            } else if (row.event_type === "trip_completed") {
+                title = "Trip Completed";
+                description = `Delivery confirmed for trip ${route}`;
+            } else {
+                description = `Event: ${row.event_type}`;
+            }
+
+            return {
+                id: row.id,
+                title,
+                description,
+                type: "info" as const,
+                time: formatRelativeTime(row.created_at),
+            };
+        });
+
+        res.json({ success: true, data });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /dashboard/alerts");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -170,8 +426,29 @@ router.get("/alerts", (_req: Request, res: Response) => {
  *       200:
  *         description: Alert marked as read
  */
-router.patch("/alerts/:id/read", (req: Request, res: Response) => {
-    res.json({ success: true, message: `Alert ${req.params.id} marked as read` });
+router.patch("/alerts/:id/read", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { error } = await supabaseAdmin
+            .from("notification_log")
+            .update({ read_at: new Date().toISOString() })
+            .eq("id", id);
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, message: "Alert marked as read" });
+            }
+            logger.error({ err: error }, "Dashboard alerts read");
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        res.json({ success: true, message: "Alert marked as read" });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in PATCH /dashboard/alerts/:id/read");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 /**
@@ -189,8 +466,29 @@ router.patch("/alerts/:id/read", (req: Request, res: Response) => {
  *       200:
  *         description: Alert dismissed
  */
-router.delete("/alerts/:id", (req: Request, res: Response) => {
-    res.json({ success: true, message: `Alert ${req.params.id} dismissed` });
+router.delete("/alerts/:id", async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { error } = await supabaseAdmin
+            .from("notification_log")
+            .update({ dismissed_at: new Date().toISOString() })
+            .eq("id", id);
+
+        if (error) {
+            if (isMissingTableError(error)) {
+                return res.json({ success: true, message: "Alert dismissed" });
+            }
+            logger.error({ err: error }, "Dashboard alerts dismiss");
+            return res.status(500).json({ success: false, error: error.message });
+        }
+        res.json({ success: true, message: "Alert dismissed" });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in DELETE /dashboard/alerts/:id");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
 });
 
 export default router;

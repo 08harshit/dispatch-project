@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ const EQUIPMENT_TYPES = [
 ];
 
 export default function Couriers() {
+  const [searchParams] = useSearchParams();
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [stats, setStats] = useState<CourierStats>({ total: 0, active: 0, compliant: 0, nonCompliant: 0, new: 0 });
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,13 @@ export default function Couriers() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const dialogs = useDialogManager<Courier>();
+
+  useEffect(() => {
+    const compliance = searchParams.get("compliance");
+    if (compliance === "compliant" || compliance === "non-compliant") {
+      setActiveTab(compliance);
+    }
+  }, [searchParams]);
 
   // --- Build server-side filters ---
   const buildFilters = useCallback((): CourierFilters => {
@@ -636,7 +645,9 @@ export default function Couriers() {
                 loadData();
               }}
               isEditing={true}
+              editingId={dialogs.selected.id}
               initialData={{
+                id: dialogs.selected.id,
                 courierName: dialogs.selected.name,
                 businessEmail: dialogs.selected.contact,
                 businessPhone: dialogs.selected.phone,

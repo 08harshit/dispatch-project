@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../config/supabase";
 import * as shipperHistoryRepo from "../repos/shipperHistoryRepo";
 import * as shipperDocumentRepo from "../repos/shipperDocumentRepo";
 import { updateShipperStatus, softDeleteShipper, updateShipperCompliance } from "../services/shipperService";
+import { getUserByEmail } from "../utils/authHelpers";
 import { isMissingTableError } from "../utils/dbError";
 import { logger } from "../utils/logger";
 import { validateBody, validateUuidParam } from "../utils/validate";
@@ -150,27 +151,27 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.get("/stats", async (_req: Request, res: Response) => {
     try {
-        const { data: rows, error } = await supabaseAdmin
-            .from("shippers")
-            .select("id, compliance, is_new")
-            .is("deleted_at", null);
+        const [totalRes, compliantRes, newRes] = await Promise.all([
+            supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+            supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("compliance", "compliant"),
+            supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_new", true),
+        ]);
 
-        if (error) {
-            if (isMissingTableError(error)) {
+        if (totalRes.error) {
+            if (isMissingTableError(totalRes.error)) {
                 return res.json({
                     success: true,
                     data: { total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 },
                 });
             }
-            logger.error({ err: error }, "Error fetching shipper stats");
-            return res.status(500).json({ success: false, error: error.message });
+            logger.error({ err: totalRes.error }, "Error fetching shipper stats");
+            return res.status(500).json({ success: false, error: totalRes.error.message });
         }
 
-        const list = rows || [];
-        const total = list.length;
-        const compliant = list.filter((r: { compliance?: string }) => r.compliance === "compliant").length;
+        const total = totalRes.count ?? 0;
+        const compliant = compliantRes.count ?? 0;
         const nonCompliant = total - compliant;
-        const newCount = list.filter((r: { is_new?: boolean }) => r.is_new === true).length;
+        const newCount = newRes.count ?? 0;
         res.json({
             success: true,
             data: {
@@ -772,8 +773,7 @@ router.post("/:id/password", validateUuidParam("id"), validateBody(passwordSchem
             return res.status(400).json({ success: false, error: "Shipper has no email - cannot set auth password" });
         }
 
-        const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
-        const existingUser = userList?.users?.find((u) => u.email === email);
+        const existingUser = await getUserByEmail(supabaseAdmin, email);
 
         if (existingUser) {
             const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, { password });
