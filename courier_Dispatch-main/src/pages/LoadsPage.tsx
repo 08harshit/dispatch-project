@@ -30,7 +30,7 @@ export const LoadsPage = () => {
   const { addLoad, isInRoute } = useRoutePlanner();
   const { toggleBookmark, isBookmarked, bookmarkCount, bookmarkedIds } = useBookmarks();
   const { user } = useAuth();
-  const { isSaved: isSavedByLead, toggleSave: onToggleSaveByLead } = useSavedLoads(user?.id);
+  const { isSaved: isSavedByLead, toggleSave: onToggleSaveByLead } = useSavedLoads(!!user);
 
   // Main tab: available vs assigned vs bookmarked
   const [mainTab, setMainTab] = useState<"available" | "assigned" | "bookmarked">("available");

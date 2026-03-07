@@ -11,9 +11,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Truck, MapPin, Calendar, Package, Scan } from "lucide-react";
+import { ArrowLeft, Truck, MapPin, Calendar, Package, Scan, XCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-import { fetchTrip, recordTripEvent, type TripDetail as TripDetailType } from "@/services/tripService";
+import { fetchTrip, recordTripEvent, updateTripStatus, type TripDetail as TripDetailType } from "@/services/tripService";
 import { toast } from "sonner";
 
 export default function TripDetail() {
@@ -23,6 +23,8 @@ export default function TripDetail() {
   const [eventDialog, setEventDialog] = useState<{ type: "pickup_scan" | "delivery_scan"; open: boolean } | null>(null);
   const [scannedValue, setScannedValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const loadTrip = useCallback(() => {
     if (!id) return;
@@ -59,6 +61,22 @@ export default function TripDetail() {
   const canRecordPickup =
     (trip.status === "scheduled" || trip.status === "in_progress") && !hasPickupScan;
   const canRecordDelivery = hasPickupScan && !hasDeliveryScan;
+  const canCancel = trip.status === "scheduled" || trip.status === "in_progress";
+
+  const handleCancelTrip = async () => {
+    if (!id) return;
+    setCancelling(true);
+    try {
+      await updateTripStatus(id, "cancelled");
+      setCancelDialogOpen(false);
+      loadTrip();
+      toast.success("Trip cancelled");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel trip");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const handleRecordEvent = async () => {
     if (!id || !eventDialog?.type || !scannedValue.trim()) return;
@@ -99,9 +117,22 @@ export default function TripDetail() {
                   <Truck className="h-5 w-5" />
                   Trip {trip.id.slice(0, 8)}
                 </CardTitle>
-                <Badge variant="outline" className="capitalize">
-                  {trip.status.replace(/_/g, " ")}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="capitalize">
+                    {trip.status.replace(/_/g, " ")}
+                  </Badge>
+                  {canCancel && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setCancelDialogOpen(true)}
+                      className="gap-2"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Cancel Trip
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
@@ -203,6 +234,25 @@ export default function TripDetail() {
           )}
         </div>
       </div>
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Trip</DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground py-2">
+            Are you sure you want to cancel this trip? This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)} disabled={cancelling}>
+              Keep Trip
+            </Button>
+            <Button variant="destructive" onClick={handleCancelTrip} disabled={cancelling}>
+              {cancelling ? "Cancelling..." : "Cancel Trip"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!eventDialog?.open}

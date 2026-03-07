@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -28,7 +29,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Eye, FileText, MoreHorizontal, Truck, CheckCircle, XCircle, UserPlus, AlertTriangle, History, Edit, Trash2, ExternalLink, Phone, Mail, MapPin, Filter, X, KeyRound, Power, ShieldCheck } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Plus, Search, Eye, FileText, MoreHorizontal, Truck, CheckCircle, XCircle, UserPlus, AlertTriangle, History, Edit, Trash2, ExternalLink, Phone, Mail, MapPin, Filter, X, KeyRound, Power, ShieldCheck, Shield, Copy, MessageSquare, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddCourierForm, CourierFormData } from "@/components/forms/AddCourierForm";
@@ -40,9 +49,12 @@ import { HistoryDialog } from "@/components/common/HistoryDialog";
 import { DocumentsDialog } from "@/components/common/DocumentsDialog";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useDialogManager } from "@/hooks/useDialogManager";
+import { useTableSort } from "@/hooks/useTableSort";
 
 // Courier type is now imported from courierService as CourierListItem
 type Courier = CourierListItem;
+
+type SortKey = "id" | "name" | "contact" | "compliance" | "status" | "history" | "documents";
 
 // Equipment type enum values (matches DB enum)
 const EQUIPMENT_TYPES = [
@@ -63,7 +75,10 @@ export default function Couriers() {
   const [equipmentTypeFilter, setEquipmentTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const dialogs = useDialogManager<Courier>();
+  const { sortField, sortDir, toggleSort } = useTableSort<SortKey>("id", "asc");
 
   useEffect(() => {
     const compliance = searchParams.get("compliance");
@@ -105,6 +120,10 @@ export default function Couriers() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab, equipmentTypeFilter, statusFilter]);
+
   // --- Equipment types from enum (no longer derived from data) ---
   const uniqueEquipmentTypes = EQUIPMENT_TYPES;
   const uniqueStatuses = ["active", "inactive"];
@@ -122,6 +141,35 @@ export default function Couriers() {
     );
   });
 
+  // --- Client-side sort ---
+  const sortedCouriers = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filteredCouriers].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "id": cmp = a.id.localeCompare(b.id); break;
+        case "name": cmp = a.name.localeCompare(b.name); break;
+        case "contact": cmp = a.contact.localeCompare(b.contact); break;
+        case "compliance": cmp = a.compliance.localeCompare(b.compliance); break;
+        case "status": cmp = a.status.localeCompare(b.status); break;
+        case "history": cmp = (a.history?.length ?? 0) - (b.history?.length ?? 0); break;
+        case "documents": cmp = (a.documents?.length ?? 0) - (b.documents?.length ?? 0); break;
+        default: break;
+      }
+      return cmp * dir;
+    });
+  }, [filteredCouriers, sortField, sortDir]);
+
+  // --- Pagination ---
+  const totalPages = Math.max(1, Math.ceil(sortedCouriers.length / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedCouriers = sortedCouriers.slice(
+    (safeCurrentPage - 1) * pageSize,
+    safeCurrentPage * pageSize
+  );
+  const startIndex = sortedCouriers.length > 0 ? (safeCurrentPage - 1) * pageSize + 1 : 0;
+  const endIndex = Math.min(safeCurrentPage * pageSize, sortedCouriers.length);
+
   // --- Stats from server ---
   const totalCouriers = stats.total;
   const compliantCount = stats.compliant;
@@ -134,6 +182,12 @@ export default function Couriers() {
   const clearFilters = () => {
     setEquipmentTypeFilter("all");
     setStatusFilter("all");
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortField !== column) return <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
   };
 
 
@@ -175,6 +229,19 @@ export default function Couriers() {
     } catch (err: any) {
       console.error("Failed to update compliance:", err);
       toast.error(err.message || "Failed to update compliance");
+    }
+  };
+
+  const handleEditComplianceChange = async (newCompliance: "compliant" | "non-compliant") => {
+    if (!dialogs.selected || dialogs.selected.compliance === newCompliance) return;
+    try {
+      await updateCourierCompliance(dialogs.selected.id, newCompliance);
+      toast.success(`${dialogs.selected.name} compliance updated`);
+      loadData();
+      dialogs.setSelected({ ...dialogs.selected, compliance: newCompliance });
+    } catch (err: unknown) {
+      console.error("Failed to update compliance:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to update compliance");
     }
   };
 
@@ -330,206 +397,289 @@ export default function Couriers() {
                 <div className="ml-auto flex items-center gap-3 px-4 py-2 rounded-full bg-background/80 border border-border/30">
                   <div className="flex items-center gap-1.5">
                     <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                    <span className="text-sm font-bold text-foreground">{filteredCouriers.length}</span>
+                    <span className="text-sm font-bold text-foreground">{sortedCouriers.length}</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">result{filteredCouriers.length !== 1 ? 's' : ''}</span>
+                  <span className="text-sm text-muted-foreground">result{sortedCouriers.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="p-5">
-            <div className="space-y-4">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-                  <p className="text-xl font-bold text-foreground">Loading Couriers...</p>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-xs">Fetching data from the server</p>
-                </div>
-              ) : filteredCouriers.map((courier, index) => (
-                <div
-                  key={courier.id}
-                  className={cn(
-                    "group relative rounded-2xl border border-border/50 bg-gradient-to-r from-background via-background to-muted/10 overflow-hidden transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 hover:border-primary/40 animate-fade-in",
-                    courier.status === "inactive" && "opacity-60"
-                  )}
-                  style={{ animationDelay: `${index * 60}ms` }}
-                >
-                  {/* Top colored bar based on compliance */}
-                  <div className={cn(
-                    "absolute top-0 left-0 right-0 h-1 transition-all duration-300",
-                    courier.compliance === "compliant"
-                      ? "bg-gradient-to-r from-success via-success/80 to-success/40"
-                      : "bg-gradient-to-r from-destructive via-destructive/80 to-destructive/40"
-                  )} />
-
-                  {/* Hover glow effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                  <div className="relative p-5 flex flex-col lg:flex-row lg:items-center gap-5">
-                    {/* Left: Avatar & ID */}
-                    <div className="flex items-center gap-4 lg:w-56">
-                      <div className="relative">
-                        <div className={cn(
-                          "h-14 w-14 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:rotate-3",
-                          courier.compliance === "compliant"
-                            ? "bg-gradient-to-br from-success/25 to-success/5 shadow-[0_0_20px_-5px] shadow-success/30"
-                            : "bg-gradient-to-br from-destructive/25 to-destructive/5 shadow-[0_0_20px_-5px] shadow-destructive/30"
-                        )}>
-                          <Truck className={cn(
-                            "h-7 w-7 transition-transform duration-300 group-hover:scale-110",
-                            courier.compliance === "compliant" ? "text-success" : "text-destructive"
-                          )} />
-                        </div>
-                        {courier.isNew && (
-                          <div className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-glow animate-bounce-subtle">
-                            <span className="text-[9px] font-bold text-primary-foreground">NEW</span>
-                          </div>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                <p className="text-xl font-bold text-foreground">Loading Couriers...</p>
+                <p className="text-sm text-muted-foreground mt-2 max-w-xs">Fetching data from the server</p>
+              </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead className="font-semibold cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("id")}>
+                        <div className="flex items-center gap-1.5">Client # <SortIcon column="id" /></div>
+                      </TableHead>
+                      <TableHead className="font-semibold cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("name")}>
+                        <div className="flex items-center gap-1.5">Courier Name <SortIcon column="name" /></div>
+                      </TableHead>
+                      <TableHead className="font-semibold cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("contact")}>
+                        <div className="flex items-center gap-1.5">Contact <SortIcon column="contact" /></div>
+                      </TableHead>
+                      <TableHead className="font-semibold cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("compliance")}>
+                        <div className="flex items-center gap-1.5">Status <SortIcon column="compliance" /></div>
+                      </TableHead>
+                      <TableHead className="font-semibold cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("history")}>
+                        <div className="flex items-center gap-1.5">History <SortIcon column="history" /></div>
+                      </TableHead>
+                      <TableHead className="font-semibold cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("documents")}>
+                        <div className="flex items-center gap-1.5">Documents <SortIcon column="documents" /></div>
+                      </TableHead>
+                      <TableHead className="font-semibold text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedCouriers.map((courier) => (
+                      <TableRow
+                        key={courier.id}
+                        className={cn(
+                          "group transition-colors",
+                          courier.status === "inactive" && "opacity-60"
                         )}
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-mono text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded inline-block">{courier.id}</p>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-foreground text-lg leading-tight">{courier.name}</p>
-                        </div>
-                        {/* Inline Activation Toggle */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleToggleStatus(courier); }}
-                          className={cn(
-                            "group/toggle relative flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-500 cursor-pointer border",
-                            courier.status === "active"
-                              ? "bg-success/10 text-success border-success/20 hover:bg-success/20 hover:shadow-[0_0_12px_-3px] hover:shadow-success/40"
-                              : "bg-muted/50 text-muted-foreground border-muted-foreground/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20"
-                          )}
-                        >
-                          <span className={cn(
-                            "relative flex h-2 w-2",
-                          )}>
-                            {courier.status === "active" && (
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                            )}
-                            <span className={cn(
-                              "relative inline-flex rounded-full h-2 w-2 transition-colors duration-300",
-                              courier.status === "active" ? "bg-success" : "bg-muted-foreground/40"
-                            )} />
-                          </span>
-                          {courier.status === "active" ? "Actif" : "Inactif"}
-                          <Power className={cn(
-                            "h-2.5 w-2.5 transition-all duration-300 opacity-0 group-hover/toggle:opacity-100 group-hover/toggle:rotate-180",
-                          )} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Middle: Details Grid */}
-                    <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          Contact
-                        </p>
-                        <p className="text-sm font-medium text-foreground truncate">{courier.contact}</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Status</p>
-                        <Badge className={cn(
-                          "font-bold shadow-sm transition-all duration-300 group-hover:scale-105",
-                          courier.compliance === "compliant"
-                            ? "bg-success/15 text-success border border-success/30"
-                            : "bg-destructive/15 text-destructive border border-destructive/30"
-                        )}>
-                          <span className={cn(
-                            "mr-2 h-2 w-2 rounded-full inline-block",
-                            courier.compliance === "compliant" ? "bg-success" : "bg-destructive animate-pulse"
-                          )} />
-                          {courier.compliance === "compliant" ? "Compliant" : "Non-Compliant"}
-                        </Badge>
-                      </div>
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold flex items-center gap-1">
-                          <Truck className="h-3 w-3" />
-                          Equipment
-                        </p>
-                        <p className="text-sm font-medium text-foreground">{courier.equipmentType}</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          Location
-                        </p>
-                        <p className="text-sm font-medium text-foreground truncate">{courier.address.split(',')[1]?.trim() || courier.address}</p>
-                      </div>
-                    </div>
-
-                    {/* Right: Actions */}
-                    <div className="flex items-center gap-2 pt-4 lg:pt-0 border-t lg:border-t-0 lg:border-l border-border/30 lg:pl-5">
-                      {[
-                        { icon: History, action: () => dialogs.open("history", courier), label: "History" },
-                        { icon: FileText, action: () => dialogs.open("docs", courier), label: "Documents" },
-                        { icon: Eye, action: () => dialogs.open("view", courier), label: "View" },
-                      ].map((btn, i) => (
-                        <Button
-                          key={i}
-                          variant="ghost"
-                          size="icon"
-                          className="h-10 w-10 rounded-xl hover:bg-primary/10 hover:text-primary hover:scale-110 transition-all duration-200"
-                          onClick={btn.action}
-                        >
-                          <btn.icon className="h-4 w-4" />
-                        </Button>
-                      ))}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-muted">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52 rounded-xl p-2">
-                          <DropdownMenuItem onClick={() => dialogs.open("view", courier)} className="gap-3 rounded-lg">
-                            <Eye className="h-4 w-4" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => dialogs.open("edit", courier)} className="gap-3 rounded-lg">
-                            <Edit className="h-4 w-4" />
-                            Edit Courier
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleVerifyFMCSA(courier.usdot)} className="gap-3 rounded-lg">
-                            <ExternalLink className="h-4 w-4" />
-                            Verify FMCSA
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => dialogs.open("password", courier)} className="gap-3 rounded-lg">
-                            <KeyRound className="h-4 w-4" />
-                            Set Password
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleToggleCompliance(courier)} className="gap-3 rounded-lg">
-                            <ShieldCheck className="h-4 w-4" />
-                            {courier.compliance === "compliant" ? "Mark Non-Compliant" : "Mark Compliant"}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator className="my-2" />
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteCourier(courier)}
-                            className="gap-3 rounded-lg text-destructive focus:text-destructive focus:bg-destructive/10"
+                      >
+                        <TableCell>
+                          <span className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">{courier.id}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                              courier.compliance === "compliant" ? "bg-success/15" : "bg-destructive/15"
+                            )}>
+                              <Truck className={cn(
+                                "h-4 w-4",
+                                courier.compliance === "compliant" ? "text-success" : "text-destructive"
+                              )} />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-foreground">{courier.name}</p>
+                              {courier.isNew && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 mt-0.5 bg-primary/10 text-primary border-0">NEW</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1 text-sm">
+                            <div className="group/email flex items-center gap-1.5 text-foreground">
+                              <Mail className="h-3 w-3 text-muted-foreground shrink-0" />
+                              <a href={`mailto:${courier.contact}`} className="truncate max-w-[160px] text-primary hover:underline">{courier.contact}</a>
+                              <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(courier.contact); toast.success("Email copied!"); }} title="Copy email" className="hidden group-hover/email:flex h-5 w-5 rounded-full bg-muted/50 hover:bg-muted items-center justify-center transition-colors shrink-0">
+                                <Copy className="h-2.5 w-2.5 text-muted-foreground" />
+                              </button>
+                            </div>
+                            <div className="group/phone flex items-center gap-1.5 text-muted-foreground relative">
+                              <Phone className="h-3 w-3 shrink-0" />
+                              <span>{courier.phone}</span>
+                              <div className="hidden group-hover/phone:flex items-center gap-1 ml-1">
+                                <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(courier.phone); toast.success("Phone copied!"); }} title="Copy phone" className="h-6 w-6 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors">
+                                  <Copy className="h-3 w-3 text-muted-foreground" />
+                                </button>
+                                <a href={`tel:${courier.phone}`} title="Call" className="h-6 w-6 rounded-full bg-accent/10 hover:bg-accent/20 flex items-center justify-center transition-colors">
+                                  <Phone className="h-3 w-3 text-accent" />
+                                </a>
+                                <a href={`sms:${courier.phone}`} title="Send text" className="h-6 w-6 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-colors">
+                                  <MessageSquare className="h-3 w-3 text-primary" />
+                                </a>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <MapPin className="h-3 w-3 shrink-0" />
+                              <span className="truncate max-w-[160px]">{courier.address.split(',').pop()?.trim()}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1.5">
+                            <Badge
+                              className={cn(
+                                "font-medium text-xs cursor-pointer transition-all hover:opacity-80",
+                                courier.compliance === "compliant"
+                                  ? "bg-success/15 text-success border border-success/30 hover:bg-success/25"
+                                  : "bg-destructive/15 text-destructive border border-destructive/30 hover:bg-destructive/25"
+                              )}
+                              onClick={() => dialogs.open("edit", courier)}
+                            >
+                              <span className={cn(
+                                "mr-1.5 h-1.5 w-1.5 rounded-full inline-block",
+                                courier.compliance === "compliant" ? "bg-success" : "bg-destructive animate-pulse"
+                              )} />
+                              {courier.compliance === "compliant" ? "Compliant" : "Non-Compliant"}
+                            </Badge>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleToggleStatus(courier); }}
+                              className={cn(
+                                "flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border",
+                                courier.status === "active"
+                                  ? "bg-success/10 text-success border-success/20 hover:bg-success/20"
+                                  : "bg-muted/50 text-muted-foreground border-muted-foreground/20 hover:bg-destructive/10 hover:text-destructive"
+                              )}
+                            >
+                              <span className={cn(
+                                "h-1.5 w-1.5 rounded-full",
+                                courier.status === "active" ? "bg-success" : "bg-muted-foreground/40"
+                              )} />
+                              {courier.status === "active" ? "Active" : "Inactive"}
+                            </button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5 text-muted-foreground hover:text-primary"
+                            onClick={() => dialogs.open("history", courier)}
                           >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            <History className="h-4 w-4" />
+                            <span className="text-xs">{courier.history?.length ?? 0}</span>
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5 text-muted-foreground hover:text-primary"
+                            onClick={() => dialogs.open("docs", courier)}
+                          >
+                            <FileText className="h-4 w-4" />
+                            <span className="text-xs">{courier.documents?.length ?? 0}</span>
+                          </Button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-primary/10 hover:text-primary"
+                              onClick={() => dialogs.open("view", courier)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52 rounded-xl p-2">
+                                <DropdownMenuItem onClick={() => dialogs.open("view", courier)} className="gap-3 rounded-lg">
+                                  <Eye className="h-4 w-4" /> View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => dialogs.open("edit", courier)} className="gap-3 rounded-lg">
+                                  <Edit className="h-4 w-4" /> Edit Courier
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleVerifyFMCSA(courier.usdot)} className="gap-3 rounded-lg">
+                                  <ExternalLink className="h-4 w-4" /> Verify FMCSA
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => dialogs.open("password", courier)} className="gap-3 rounded-lg">
+                                  <KeyRound className="h-4 w-4" /> Set Password
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleToggleCompliance(courier)} className="gap-3 rounded-lg">
+                                  <ShieldCheck className="h-4 w-4" />
+                                  {courier.compliance === "compliant" ? "Mark Non-Compliant" : "Mark Compliant"}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-2" />
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteCourier(courier)}
+                                  className="gap-3 rounded-lg text-destructive focus:text-destructive focus:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-4 w-4" /> Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {paginatedCouriers.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-32 text-center">
+                          <EmptyState
+                            icon={Truck}
+                            title="No couriers found"
+                            description="Try adjusting your search criteria or filters to find what you're looking for"
+                            actionLabel="Clear Filters"
+                            onAction={clearFilters}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+
+                {filteredCouriers.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t bg-muted/10">
+                    <div className="flex items-center gap-4">
+                      <p className="text-sm text-muted-foreground">
+                        Showing <span className="font-semibold text-foreground">{startIndex}</span> to <span className="font-semibold text-foreground">{endIndex}</span> of <span className="font-semibold text-foreground">{sortedCouriers.length}</span> results
+                      </p>
+                      <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                        <SelectTrigger className="w-[80px] h-8 text-xs bg-background border-border/30 rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[5, 10, 20, 50].map((size) => (
+                            <SelectItem key={size} value={String(size)}>{size} / page</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 rounded-lg"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={safeCurrentPage <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 rounded-lg"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={safeCurrentPage <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm text-muted-foreground px-2">
+                        Page {safeCurrentPage} of {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 rounded-lg"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={safeCurrentPage >= totalPages}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 rounded-lg"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={safeCurrentPage >= totalPages}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                        <ChevronRight className="h-4 w-4 -ml-2.5" />
+                      </Button>
                     </div>
                   </div>
-                </div>
-              ))}
-
-              {!loading && filteredCouriers.length === 0 && (
-                <EmptyState
-                  icon={Truck}
-                  title="No couriers found"
-                  description="Try adjusting your search criteria or filters to find what you're looking for"
-                  actionLabel="Clear Filters"
-                  onAction={clearFilters}
-                />
-              )}
-            </div>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -639,7 +789,34 @@ export default function Couriers() {
             </DialogDescription>
           </DialogHeader>
           {dialogs.selected && (
-            <AddCourierForm
+            <>
+              <div className="space-y-2 pb-4 border-b">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" />
+                  Compliance Status
+                </Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["compliant", "non-compliant"] as const).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => handleEditComplianceChange(status)}
+                      className={cn(
+                        "flex items-center gap-2 p-3 rounded-xl border-2 transition-all duration-200 text-sm font-medium",
+                        dialogs.selected!.compliance === status
+                          ? status === "compliant"
+                            ? "border-success bg-success/10 text-success"
+                            : "border-destructive bg-destructive/10 text-destructive"
+                          : "border-border bg-muted/10 text-muted-foreground hover:border-muted-foreground/40"
+                      )}
+                    >
+                      {status === "compliant" ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                      {status === "compliant" ? "Compliant" : "Non-Compliant"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <AddCourierForm
               onSuccess={() => {
                 dialogs.setOpen("edit", false);
                 loadData();
@@ -659,6 +836,7 @@ export default function Couriers() {
                 insuranceCompany: dialogs.selected.insuranceCompany,
               } as Partial<CourierFormData>}
             />
+            </>
           )}
         </DialogContent>
       </Dialog>

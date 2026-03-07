@@ -160,9 +160,12 @@ export async function updateLoadStatus(id: string, status: string): Promise<Load
     return getLoadById(lead.id) as Promise<LoadListItem>;
 }
 
-export async function deleteLoad(id: string): Promise<void> {
+export async function deleteLoad(id: string): Promise<LoadListItem> {
     await loadRepo.update(id, { status: "cancelled" });
     await historyRepo.logAction(id, "Load cancelled");
+    const load = await getLoadById(id);
+    if (!load) throw new Error("Failed to fetch load after cancel");
+    return load;
 }
 
 export async function getLoadHistory(id: string) {

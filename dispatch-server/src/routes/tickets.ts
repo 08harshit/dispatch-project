@@ -240,16 +240,28 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
 router.delete("/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
+
+        const { data: existing } = await supabaseAdmin.from("tickets").select("*").eq("id", id).single();
+        let ticket: Record<string, unknown> | null = null;
+        if (existing) {
+            const { data: commentRows } = await supabaseAdmin
+                .from("ticket_comments")
+                .select("*")
+                .eq("ticket_id", id)
+                .order("created_at", { ascending: true });
+            ticket = mapTicket(existing as Record<string, unknown>, commentRows || []);
+        }
+
         const { error } = await supabaseAdmin.from("tickets").delete().eq("id", id);
 
         if (error) {
             if (isMissingTableError(error)) {
-                return res.json({ success: true, message: "Ticket deleted" });
+                return res.json({ success: true, data: ticket, message: "Ticket deleted" });
             }
             logger.error({ err: error }, "Error deleting ticket");
             return res.status(500).json({ success: false, error: error.message });
         }
-        res.json({ success: true, message: "Ticket deleted" });
+        res.json({ success: true, data: ticket, message: "Ticket deleted" });
     } catch (err: unknown) {
         logger.error({ err }, "Error in DELETE /tickets/:id");
         res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });

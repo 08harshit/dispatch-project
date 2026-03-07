@@ -53,7 +53,7 @@ export async function updateShipperStatus(
 
 export async function softDeleteShipper(
     id: string
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true; data: ShipperRow } | { success: false; error: string }> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("shippers")
         .select("id")
@@ -65,16 +65,18 @@ export async function softDeleteShipper(
         return { success: false, error: "Shipper not found" };
     }
 
-    const { error: updateError } = await supabaseAdmin
+    const { data: updated, error: updateError } = await supabaseAdmin
         .from("shippers")
         .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .select()
+        .single();
 
     if (updateError) {
         return { success: false, error: updateError.message };
     }
 
-    return { success: true };
+    return { success: true, data: updated as ShipperRow };
 }
 
 export async function updateShipperCompliance(

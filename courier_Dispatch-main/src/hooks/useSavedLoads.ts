@@ -6,25 +6,25 @@ import {
   type SavedLoadItem,
 } from "@/services/savedLoadsService";
 
-export function useSavedLoads(courierId: string | undefined) {
+export function useSavedLoads(isAuthenticated: boolean) {
   const [saved, setSaved] = useState<SavedLoadItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refetch = useCallback(async () => {
-    if (!courierId) {
+    if (!isAuthenticated) {
       setSaved([]);
       return;
     }
     setLoading(true);
     try {
-      const list = await fetchSavedLoads(courierId);
+      const list = await fetchSavedLoads();
       setSaved(list);
     } catch {
       setSaved([]);
     } finally {
       setLoading(false);
     }
-  }, [courierId]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     refetch();
@@ -37,9 +37,9 @@ export function useSavedLoads(courierId: string | undefined) {
 
   const save = useCallback(
     async (leadId: string) => {
-      if (!courierId) return;
+      if (!isAuthenticated) return;
       try {
-        const item = await saveLoad(courierId, leadId);
+        const item = await saveLoad(leadId);
         setSaved((prev) => {
           if (prev.some((s) => s.lead_id === leadId)) return prev;
           return [item, ...prev];
@@ -48,20 +48,20 @@ export function useSavedLoads(courierId: string | undefined) {
         throw e;
       }
     },
-    [courierId]
+    [isAuthenticated]
   );
 
   const unsave = useCallback(
     async (leadId: string) => {
-      if (!courierId) return;
+      if (!isAuthenticated) return;
       try {
-        await unsaveLoadByLead(courierId, leadId);
+        await unsaveLoadByLead(leadId);
         setSaved((prev) => prev.filter((s) => s.lead_id !== leadId));
       } catch (e) {
         throw e;
       }
     },
-    [courierId]
+    [isAuthenticated]
   );
 
   const toggleSave = useCallback(

@@ -30,4 +30,7 @@ export const config = {
         apiKey: process.env.RESEND_API_KEY || undefined,
         fromEmail: process.env.NOTIFICATION_FROM_EMAIL || process.env.FROM_EMAIL || "notifications@dispatch.local",
     },
+
+    /** Admin email for trip lifecycle notifications. If set, admin receives courier_assigned, trip_started, trip_completed, trip_cancelled. */
+    adminEmail: process.env.ADMIN_EMAIL || process.env.NOTIFICATION_ADMIN_EMAIL || undefined,
 };

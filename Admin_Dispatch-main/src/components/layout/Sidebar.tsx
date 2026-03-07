@@ -27,7 +27,7 @@ const navigation = [
   { name: "Shippers", href: "/shippers", icon: Package },
   { name: "Loads", href: "/loads", icon: PackageOpen },
   // { name: "Contracts", href: "/contracts", icon: FileText }, // MODULE DISABLED
-  // { name: "Trips", href: "/trips", icon: MapPin }, // MODULE DISABLED
+  { name: "Trips", href: "/trips", icon: MapPin },
   // { name: "Vehicles", href: "/vehicles", icon: Truck }, // MODULE DISABLED
   // { name: "Vehicle Access", href: "/vehicle-access", icon: KeyRound }, // MODULE DISABLED
   { name: "Accounting", href: "/accounting", icon: Calculator },

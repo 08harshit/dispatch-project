@@ -45,7 +45,7 @@ export async function processNotificationLog(): Promise<{
         return { processed: list.length, sent: 0, errors: ["RESEND_API_KEY not set; skipping send"] };
     }
 
-    const contractIds = [...new Set(list.filter((r) => r.event_type === "trip_completed" && r.contract_id).map((r) => r.contract_id!))];
+    const contractIds = [...new Set(list.filter((r) => r.contract_id).map((r) => r.contract_id!))];
     const contractEmailMap = await buildContractEmailMap(contractIds);
 
     for (const row of list) {
@@ -111,13 +111,27 @@ function buildMessage(
     let subject = "Dispatch notification";
     let text = `Event: ${row.event_type} at ${row.created_at}`;
 
-    if (row.event_type === "trip_completed" && row.contract_id) {
+    const tripEventTypes = ["courier_assigned", "trip_started", "trip_completed", "trip_cancelled"];
+    if (tripEventTypes.includes(row.event_type) && row.contract_id) {
         const emails = contractEmailMap.get(row.contract_id);
         if (emails) {
             if (emails.courierEmail) to.push(emails.courierEmail);
             if (emails.shipperEmail) to.push(emails.shipperEmail);
-            subject = "Trip completed";
+        }
+        if (config.adminEmail) to.push(config.adminEmail);
+
+        if (row.event_type === "courier_assigned") {
+            subject = "Load Assigned to Courier";
+            text = `A load has been assigned to a courier for contract ${row.contract_id}. ${text}`;
+        } else if (row.event_type === "trip_started") {
+            subject = "Trip Started";
+            text = `Pickup scan recorded for trip (contract ${row.contract_id}). ${text}`;
+        } else if (row.event_type === "trip_completed") {
+            subject = "Trip Completed";
             text = `Trip (contract ${row.contract_id}) has been completed. ${text}`;
+        } else if (row.event_type === "trip_cancelled") {
+            subject = "Trip Cancelled";
+            text = `Trip (contract ${row.contract_id}) has been cancelled. ${text}`;
         }
     }
 

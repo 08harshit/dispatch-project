@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPatch, apiPost } from "./api";
 
 export interface TripListItem {
     id: string;
@@ -44,4 +44,9 @@ export async function recordTripEvent(
 ): Promise<unknown> {
     const res = await apiPost<unknown>(`/trips/${tripId}/events`, body);
     return res.data;
+}
+
+export async function updateTripStatus(tripId: string, status: "cancelled"): Promise<TripListItem | null> {
+    const res = await apiPatch<TripListItem>(`/trips/${tripId}`, { status });
+    return res.data ?? null;
 }

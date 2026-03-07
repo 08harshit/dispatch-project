@@ -50,6 +50,7 @@ export interface CourierRow {
     is_new?: boolean;
     created_at?: string;
     updated_at?: string;
+    deleted_at?: string;
 }
 
 export interface CreateCourierData {
@@ -303,14 +304,16 @@ export async function hardDelete(id: string): Promise<DbResult<null>> {
     return { data: null, error: null };
 }
 
-/** Soft-delete a courier (set deleted_at instead of removing the row). */
-export async function softDelete(id: string): Promise<DbResult<null>> {
-    const { error } = await getTable("couriers")
+/** Soft-delete a courier (set deleted_at instead of removing the row). Returns the updated row. */
+export async function softDelete(id: string): Promise<DbResult<CourierRow>> {
+    const { data, error } = await getTable("couriers")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .select()
+        .single();
 
     if (error) return { data: null, error: error.message };
-    return { data: null, error: null };
+    return { data: data as CourierRow, error: null };
 }
 
 /** Update a courier's compliance status. */

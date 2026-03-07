@@ -17,8 +17,8 @@ import Accounting from "./pages/Accounting";
 import Analytics from "./pages/Analytics";
 import Loads from "./pages/Loads";
 // import Contracts from "./pages/Contracts"; // MODULE DISABLED
-// import Trips from "./pages/Trips"; // MODULE DISABLED
-// import TripDetail from "./pages/TripDetail"; // MODULE DISABLED
+import Trips from "./pages/Trips";
+import TripDetail from "./pages/TripDetail";
 // import Vehicles from "./pages/Vehicles"; // MODULE DISABLED
 // import VehicleAccess from "./pages/VehicleAccess"; // MODULE DISABLED
 import Settings from "./pages/Settings";
@@ -110,8 +110,8 @@ function AppContent() {
             <Route path="/shippers" element={<ProtectedRoute><Shippers /></ProtectedRoute>} />
             <Route path="/loads" element={<ProtectedRoute><Loads /></ProtectedRoute>} />
             {/* <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
-            {/* <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
-            {/* <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
+            <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />
+            <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
             {/* <Route path="/vehicles/:vehicleId" element={<ProtectedRoute><VehicleIdRedirect /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             {/* <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             {/* <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}

@@ -17,7 +17,7 @@ function assertOnline(): void {
 
 function handleResponseError(res: Response, data: { error?: string }): never {
   if (res.status === 401) {
-    window.location.href = "/auth";
+    window.location.href = "/landing";
   }
   throw new Error(data.error || `API error: ${res.status}`);
 }

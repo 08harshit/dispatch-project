@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 
 export const SavedLoadsPage = () => {
   const { user } = useAuth();
-  const courierId = user?.id ?? undefined;
-  const { savedLoads, loading, unsave } = useSavedLoads(courierId);
+  const isAuthenticated = !!user;
+  const { savedLoads, loading, unsave } = useSavedLoads(isAuthenticated);
 
   const handleRemove = async (leadId: string) => {
     try {
@@ -19,7 +19,7 @@ export const SavedLoadsPage = () => {
     }
   };
 
-  if (!courierId) {
+  if (!isAuthenticated) {
     return (
       <div className="rounded-2xl border border-stone-200 bg-white p-12 text-center">
         <Bookmark className="h-12 w-12 mx-auto text-stone-300 mb-4" />

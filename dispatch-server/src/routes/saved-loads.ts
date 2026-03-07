@@ -1,10 +1,9 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
-import { optionalAuth } from "../middleware/auth";
+import { resolveCourierId } from "../utils/authHelpers";
 
 const router = Router();
-router.use(optionalAuth);
 
 /**
  * @swagger
@@ -30,7 +29,10 @@ router.use(optionalAuth);
  */
 router.get("/", async (req: Request, res: Response) => {
     try {
-        const courier_id = (req.query.courier_id as string) || req.user?.id;
+        let courier_id = req.query.courier_id as string | undefined;
+        if (!courier_id && req.user?.id) {
+            courier_id = (await resolveCourierId(supabaseAdmin, req.user.id)) || undefined;
+        }
         if (!courier_id) {
             return res.status(400).json({ success: false, error: "courier_id is required or send Authorization: Bearer <token>" });
         }
@@ -99,7 +101,10 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.post("/", async (req: Request, res: Response) => {
     try {
-        const courier_id = req.body.courier_id || req.user?.id;
+        let courier_id = req.body.courier_id as string | undefined;
+        if (!courier_id && req.user?.id) {
+            courier_id = (await resolveCourierId(supabaseAdmin, req.user.id)) || undefined;
+        }
         const lead_id = req.body.lead_id;
         if (!courier_id || !lead_id) {
             return res.status(400).json({ success: false, error: "lead_id is required; courier_id required or send Authorization: Bearer <token>" });
@@ -141,11 +146,21 @@ router.post("/", async (req: Request, res: Response) => {
  */
 router.delete("/by-lead", async (req: Request, res: Response) => {
     try {
-        const courier_id = (req.query.courier_id as string) || req.user?.id;
+        let courier_id = req.query.courier_id as string | undefined;
+        if (!courier_id && req.user?.id) {
+            courier_id = (await resolveCourierId(supabaseAdmin, req.user.id)) || undefined;
+        }
         const lead_id = req.query.lead_id as string;
         if (!courier_id || !lead_id) {
             return res.status(400).json({ success: false, error: "lead_id is required; courier_id required or send Authorization: Bearer <token>" });
         }
+
+        const { data: existing } = await supabaseAdmin
+            .from("saved_loads")
+            .select("id, lead_id, courier_id, saved_at")
+            .eq("courier_id", courier_id)
+            .eq("lead_id", lead_id)
+            .maybeSingle();
 
         const { error } = await supabaseAdmin
             .from("saved_loads")
@@ -158,7 +173,7 @@ router.delete("/by-lead", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
-        res.json({ success: true, message: "Saved load removed" });
+        res.json({ success: true, data: existing || { id: null, lead_id, courier_id }, message: "Saved load removed" });
     } catch (err: any) {
         logger.error({ err }, "Error in DELETE /saved-loads/by-lead");
         res.status(500).json({ success: false, error: err.message });
@@ -175,6 +190,13 @@ router.delete("/by-lead", async (req: Request, res: Response) => {
 router.delete("/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
+
+        const { data: existing } = await supabaseAdmin
+            .from("saved_loads")
+            .select("id, lead_id, courier_id, saved_at")
+            .eq("id", id)
+            .maybeSingle();
+
         const { error } = await supabaseAdmin
             .from("saved_loads")
             .delete()
@@ -185,7 +207,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
-        res.json({ success: true, message: "Saved load removed" });
+        res.json({ success: true, data: existing || { id, lead_id: null, courier_id: null }, message: "Saved load removed" });
     } catch (err: any) {
         logger.error({ err }, "Error in DELETE /saved-loads/:id");
         res.status(500).json({ success: false, error: err.message });

@@ -30,6 +30,7 @@ export interface CourierListItem {
     isNew: boolean;
     history: { date: string; action: string }[];
     documents: { id: string; name: string; type: string; date: string; url: string | null }[];
+    deletedAt?: string;
 }
 
 export interface CourierStats {
@@ -144,6 +145,46 @@ export async function getCourier(id: string) {
     return result.data;
 }
 
+/** Fetch a single courier as CourierListItem (includes related data). Used for create/update/delete responses. */
+export async function getCourierListItem(id: string): Promise<CourierListItem | null> {
+    const result = await courierRepo.findById(id);
+    if (result.error || !result.data) return null;
+
+    const c = result.data;
+    const courierIds = [c.id];
+
+    const [trucksMap, insuranceMap, historyMap, docsMap] = await Promise.all([
+        courierRepo.findTrucksByCourierIds(courierIds),
+        courierRepo.findInsuranceByCourierIds(courierIds),
+        historyRepo.findByCourierIds(courierIds),
+        documentRepo.findByCourierIds(courierIds),
+    ]);
+
+    const trucks = trucksMap.get(c.id) || [];
+    const totalTrucks = trucks.reduce((sum, t) => sum + (t.count || 0), 0);
+    const equipmentTypes = trucks.map(t => t.equipment_type).filter(Boolean);
+
+    const item: CourierListItem = {
+        id: c.id,
+        name: c.name || "",
+        contact: c.contact_email || "",
+        phone: c.phone || "",
+        compliance: c.compliance || "non-compliant",
+        address: c.address || "",
+        usdot: c.usdot || "",
+        mc: c.mc || "",
+        status: c.status || "active",
+        trucks: totalTrucks,
+        insuranceCompany: insuranceMap.get(c.id) || "",
+        equipmentType: equipmentTypes.join(", ") || "",
+        isNew: c.is_new || false,
+        history: historyMap.get(c.id) || [],
+        documents: docsMap.get(c.id) || [],
+    };
+    if (c.deleted_at) item.deletedAt = c.deleted_at;
+    return item;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Stats                                                              */
 /* ------------------------------------------------------------------ */
@@ -163,7 +204,7 @@ export async function getStats(): Promise<CourierStats> {
 /*  Create courier                                                     */
 /* ------------------------------------------------------------------ */
 
-export async function createCourier(body: CourierFormBody): Promise<{ id: string }> {
+export async function createCourier(body: CourierFormBody): Promise<CourierListItem> {
     // 1. Insert core courier row
     const result = await courierRepo.create({
         name: body.courierName || "",
@@ -245,14 +286,16 @@ export async function createCourier(body: CourierFormBody): Promise<{ id: string
 
     await Promise.all(relatedOps);
 
-    return { id: courierId };
+    const item = await getCourierListItem(courierId);
+    if (!item) throw new Error("Failed to fetch created courier");
+    return item;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Update courier                                                     */
 /* ------------------------------------------------------------------ */
 
-export async function updateCourier(id: string, body: CourierFormBody): Promise<void> {
+export async function updateCourier(id: string, body: CourierFormBody): Promise<CourierListItem> {
     // 1. Build partial update for core fields
     const courierData: Partial<courierRepo.CreateCourierData> = {};
     if (body.courierName !== undefined) courierData.name = body.courierName;
@@ -330,31 +373,41 @@ export async function updateCourier(id: string, body: CourierFormBody): Promise<
     );
 
     await Promise.all(relatedOps);
+
+    const item = await getCourierListItem(id);
+    if (!item) throw new Error("Failed to fetch updated courier");
+    return item;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Toggle status                                                      */
 /* ------------------------------------------------------------------ */
 
-export async function toggleStatus(id: string): Promise<{ status: string }> {
+export async function toggleStatus(id: string): Promise<CourierListItem> {
     const result = await courierRepo.toggleStatus(id);
     if (result.error) throw new Error(result.error);
 
     const newStatus = result.data!.status;
     await historyRepo.addEntry(id, `Status changed to ${newStatus}`);
 
-    return { status: newStatus };
+    const item = await getCourierListItem(id);
+    if (!item) throw new Error("Failed to fetch courier after status toggle");
+    return item;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Delete courier                                                     */
 /* ------------------------------------------------------------------ */
 
-export async function deleteCourier(id: string): Promise<void> {
+export async function deleteCourier(id: string): Promise<CourierListItem> {
     // Phase 3: Soft delete instead of hard delete
     const result = await courierRepo.softDelete(id);
     if (result.error) throw new Error(result.error);
     await historyRepo.addEntry(id, "Account soft-deleted by Admin");
+
+    const item = await getCourierListItem(id);
+    if (!item) throw new Error("Failed to fetch courier after soft delete");
+    return item;
 }
 
 /* ------------------------------------------------------------------ */
@@ -406,10 +459,14 @@ export async function setCourierPassword(id: string, password: string): Promise<
 export async function setCompliance(
     id: string,
     compliance: "compliant" | "non-compliant",
-): Promise<void> {
+): Promise<CourierListItem> {
     const result = await courierRepo.updateCompliance(id, compliance);
     if (result.error) throw new Error(result.error);
     await historyRepo.addEntry(id, `Compliance changed to ${compliance}`);
+
+    const item = await getCourierListItem(id);
+    if (!item) throw new Error("Failed to fetch courier after compliance update");
+    return item;
 }
 
 /* ------------------------------------------------------------------ */

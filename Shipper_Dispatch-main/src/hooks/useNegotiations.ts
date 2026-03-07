@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables, Enums } from '@/integrations/supabase/types';
+import { apiGet } from '@/services/api';
+import { createContract } from '@/services/contractService';
 
 export type Negotiation = Tables<'negotiations'>;
 export type Offer = Tables<'offers'>;
@@ -157,6 +159,32 @@ export function useNegotiations(leadId: string | null) {
 
       if (data?.error) {
         throw new Error(data.error);
+      }
+
+      if (response === 'accepted') {
+        try {
+          const meRes = await apiGet<{ data: { shipper_id?: string } }>('/me');
+          const shipperId = meRes.data?.shipper_id;
+          if (shipperId) {
+            const leadRes = await apiGet<{ data: { pickup_address?: string; delivery_address?: string } }>(`/loads/${negotiation.lead_id}`);
+            const lead = leadRes.data;
+            const now = new Date();
+            const pickupTime = now.toISOString();
+            const expectedReach = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+            await createContract({
+              lead_id: negotiation.lead_id,
+              courier_id: negotiation.courier_id,
+              shipper_id: shipperId,
+              amount: negotiation.current_offer ?? 0,
+              pickup_time: pickupTime,
+              expected_reach_time: expectedReach,
+              start_location: lead?.pickup_address ?? 'Pickup',
+              end_location: lead?.delivery_address ?? 'Delivery',
+            });
+          }
+        } catch (contractErr) {
+          console.warn('Contract sync to dispatch-server failed:', contractErr);
+        }
       }
 
       console.log('Negotiate response:', data);

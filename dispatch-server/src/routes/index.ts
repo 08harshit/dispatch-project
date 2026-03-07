@@ -1,14 +1,15 @@
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
 import { supabaseAdmin } from "../config/supabase";
+import { resolveCourierId, resolveShipperId } from "../utils/authHelpers";
 import cronRoutes from "./cron";
 // import vehicleAccessRoutes from "./vehicle-access"; // MODULE DISABLED
 // import vehicleRoutes from "./vehicles"; // MODULE DISABLED
 import courierRoutes from "./couriers";
 import shipperRoutes from "./shippers";
 import loadRoutes from "./loads";
-// import contractRoutes from "./contracts"; // MODULE DISABLED
-// import tripRoutes from "./trips"; // MODULE DISABLED
+import contractRoutes from "./contracts";
+import tripRoutes from "./trips";
 import ticketRoutes from "./tickets";
 import dashboardRoutes from "./dashboard";
 import accountingRoutes from "./accounting";
@@ -61,13 +62,40 @@ router.use("/cron", cronRoutes);
 
 // Protected API routes
 router.use(authenticate);
-// Optional: enable requireRole(["admin"]) for admin-only access when all clients are admin
-// router.use(requireRole(["admin"]));
+
+router.get("/me", async (req: Request, res: Response) => {
+    try {
+        const authUserId = req.user?.id;
+        if (!authUserId) {
+            return res.status(401).json({ success: false, error: "Not authenticated" });
+        }
+        const [courier_id, shipper_id] = await Promise.all([
+            resolveCourierId(supabaseAdmin, authUserId),
+            resolveShipperId(supabaseAdmin, authUserId),
+        ]);
+        res.json({
+            success: true,
+            data: {
+                id: authUserId,
+                email: req.user?.email,
+                role: req.user?.role,
+                courier_id: courier_id ?? undefined,
+                shipper_id: shipper_id ?? undefined,
+            },
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
+});
+
 router.use("/couriers", courierRoutes);
 router.use("/shippers", shipperRoutes);
 router.use("/loads", loadRoutes);
-// router.use("/contracts", contractRoutes); // MODULE DISABLED
-// router.use("/trips", tripRoutes); // MODULE DISABLED
+router.use("/contracts", contractRoutes);
+router.use("/trips", tripRoutes);
 router.use("/tickets", ticketRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/accounting", accountingRoutes);

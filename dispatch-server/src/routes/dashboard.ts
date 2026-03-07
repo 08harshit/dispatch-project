@@ -171,6 +171,9 @@ async function fetchAlerts(): Promise<Array<{ id: string; title: string; descrip
         } else if (row.event_type === "trip_completed") {
             title = "Trip Completed";
             description = `Delivery confirmed for trip ${route}`;
+        } else if (row.event_type === "trip_cancelled") {
+            title = "Trip Cancelled";
+            description = `Trip was cancelled for route ${route}`;
         } else {
             description = `Event: ${row.event_type}`;
         }
@@ -388,6 +391,9 @@ router.get("/alerts", async (_req: Request, res: Response) => {
             } else if (row.event_type === "trip_completed") {
                 title = "Trip Completed";
                 description = `Delivery confirmed for trip ${route}`;
+            } else if (row.event_type === "trip_cancelled") {
+                title = "Trip Cancelled";
+                description = `Trip was cancelled for route ${route}`;
             } else {
                 description = `Event: ${row.event_type}`;
             }
