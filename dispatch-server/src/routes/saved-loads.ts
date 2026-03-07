@@ -1,10 +1,9 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
-import { optionalAuth } from "../middleware/auth";
+import { resolveCourierId } from "../utils/authHelpers";
 
 const router = Router();
-router.use(optionalAuth);
 
 /**
  * @swagger
@@ -30,7 +29,10 @@ router.use(optionalAuth);
  */
 router.get("/", async (req: Request, res: Response) => {
     try {
-        const courier_id = (req.query.courier_id as string) || req.user?.id;
+        let courier_id = req.query.courier_id as string | undefined;
+        if (!courier_id && req.user?.id) {
+            courier_id = (await resolveCourierId(supabaseAdmin, req.user.id)) || undefined;
+        }
         if (!courier_id) {
             return res.status(400).json({ success: false, error: "courier_id is required or send Authorization: Bearer <token>" });
         }
@@ -99,7 +101,10 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.post("/", async (req: Request, res: Response) => {
     try {
-        const courier_id = req.body.courier_id || req.user?.id;
+        let courier_id = req.body.courier_id as string | undefined;
+        if (!courier_id && req.user?.id) {
+            courier_id = (await resolveCourierId(supabaseAdmin, req.user.id)) || undefined;
+        }
         const lead_id = req.body.lead_id;
         if (!courier_id || !lead_id) {
             return res.status(400).json({ success: false, error: "lead_id is required; courier_id required or send Authorization: Bearer <token>" });
@@ -141,7 +146,10 @@ router.post("/", async (req: Request, res: Response) => {
  */
 router.delete("/by-lead", async (req: Request, res: Response) => {
     try {
-        const courier_id = (req.query.courier_id as string) || req.user?.id;
+        let courier_id = req.query.courier_id as string | undefined;
+        if (!courier_id && req.user?.id) {
+            courier_id = (await resolveCourierId(supabaseAdmin, req.user.id)) || undefined;
+        }
         const lead_id = req.query.lead_id as string;
         if (!courier_id || !lead_id) {
             return res.status(400).json({ success: false, error: "lead_id is required; courier_id required or send Authorization: Bearer <token>" });

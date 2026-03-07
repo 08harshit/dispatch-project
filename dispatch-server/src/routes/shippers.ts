@@ -780,8 +780,9 @@ router.post("/:id/password", validateUuidParam("id"), validateBody(passwordSchem
             if (updateErr) {
                 return res.status(500).json({ success: false, error: updateErr.message });
             }
+            await supabaseAdmin.from("shippers").update({ auth_user_id: existingUser.id }).eq("id", id);
         } else {
-            const { error: createErr } = await supabaseAdmin.auth.admin.createUser({
+            const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
                 email,
                 password,
                 email_confirm: true,
@@ -789,6 +790,9 @@ router.post("/:id/password", validateUuidParam("id"), validateBody(passwordSchem
             });
             if (createErr) {
                 return res.status(500).json({ success: false, error: createErr.message });
+            }
+            if (newUser?.user?.id) {
+                await supabaseAdmin.from("shippers").update({ auth_user_id: newUser.user.id }).eq("id", id);
             }
         }
 

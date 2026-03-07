@@ -19,13 +19,13 @@ export interface SavedLoadItem {
   } | null;
 }
 
-export async function fetchSavedLoads(courierId: string): Promise<SavedLoadItem[]> {
-  const res = await apiGet<SavedLoadItem[]>(`/saved-loads?courier_id=${encodeURIComponent(courierId)}`);
+export async function fetchSavedLoads(): Promise<SavedLoadItem[]> {
+  const res = await apiGet<SavedLoadItem[]>("/saved-loads");
   return res.data ?? [];
 }
 
-export async function saveLoad(courierId: string, leadId: string): Promise<SavedLoadItem> {
-  const res = await apiPost<SavedLoadItem>("/saved-loads", { courier_id: courierId, lead_id: leadId });
+export async function saveLoad(leadId: string): Promise<SavedLoadItem> {
+  const res = await apiPost<SavedLoadItem>("/saved-loads", { lead_id: leadId });
   return res.data as SavedLoadItem;
 }
 
@@ -33,6 +33,6 @@ export async function unsaveLoadById(id: string): Promise<void> {
   await apiDelete(`/saved-loads/${id}`);
 }
 
-export async function unsaveLoadByLead(courierId: string, leadId: string): Promise<void> {
-  await apiDelete(`/saved-loads/by-lead?courier_id=${encodeURIComponent(courierId)}&lead_id=${encodeURIComponent(leadId)}`);
+export async function unsaveLoadByLead(leadId: string): Promise<void> {
+  await apiDelete(`/saved-loads/by-lead?lead_id=${encodeURIComponent(leadId)}`);
 }

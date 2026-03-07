@@ -7,6 +7,8 @@ import { z } from "zod";
 import { logger } from "../utils/logger";
 import { validateBody, validateUuidParam } from "../utils/validate";
 import * as loadService from "../services/loadService";
+import { resolveShipperId } from "../utils/authHelpers";
+import { supabaseAdmin } from "../config/supabase";
 
 const router = Router();
 type IdParams = { id: string };
@@ -142,7 +144,11 @@ const createLoadSchema = z.object({
 router.post("/", validateBody(createLoadSchema), async (req: Request, res: Response) => {
     try {
         const payload = req.body;
-        const load = await loadService.createLoad({ ...payload, status: "open" });
+        let shipper_id = payload.shipper_id;
+        if (!shipper_id && req.user?.id) {
+            shipper_id = (await resolveShipperId(supabaseAdmin, req.user.id)) || undefined;
+        }
+        const load = await loadService.createLoad({ ...payload, shipper_id: shipper_id ?? null, status: "open" });
         res.status(201).json({ success: true, data: load });
     } catch (err: any) {
         logger.error({ err }, "Error in POST /loads");

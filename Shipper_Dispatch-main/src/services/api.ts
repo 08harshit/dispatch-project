@@ -26,6 +26,14 @@ export async function apiGet<T>(path: string): Promise<ApiResponse<T>> {
   return body as ApiResponse<T>;
 }
 
+export async function apiGet<T>(path: string): Promise<ApiResponse<T>> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as ApiResponse<unknown>).error || `API error: ${res.status}`);
+  return body as ApiResponse<T>;
+}
+
 export async function apiPost<T>(path: string, body: unknown): Promise<ApiResponse<T>> {
   const authHeaders = await getAuthHeaders();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -33,14 +41,6 @@ export async function apiPost<T>(path: string, body: unknown): Promise<ApiRespon
     headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as ApiResponse<unknown>).error || `API error: ${res.status}`);
-  return data as ApiResponse<T>;
-}
-
-export async function apiDelete<T>(path: string): Promise<ApiResponse<T>> {
-  const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE", headers: authHeaders });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as ApiResponse<unknown>).error || `API error: ${res.status}`);
   return data as ApiResponse<T>;

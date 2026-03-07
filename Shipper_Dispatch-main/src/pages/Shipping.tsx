@@ -27,6 +27,7 @@ import ShippingDetailsSection from "@/components/post-vehicle/ShippingDetailsSec
 import { VehicleEntry, LocationContact, PostVehicleFormData } from "@/types/vehicle";
 import { ConditionReport } from "@/types/conditionReport";
 import { supabase } from "@/integrations/supabase/client";
+import { createLoad } from "@/services/loadService";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -380,13 +381,12 @@ const Shipping = () => {
       return;
     }
 
-    // Save lead to database
-    const vehicle = formData.vehicles[0]; // For now, save first vehicle
+    const vehicle = formData.vehicles[0];
     const listingId = `VH-${Date.now().toString(36).toUpperCase()}`;
     const price = parseFloat(formData.price) || 0;
 
     try {
-      const { data: lead, error } = await supabase.from('leads').insert({
+      const lead = await createLoad({
         listing_id: listingId,
         pickup_address: formData.pickupAddress,
         pickup_location_type: formData.pickupLocationType,
@@ -409,33 +409,29 @@ const Shipping = () => {
         initial_price: price,
         payment_type: formData.paymentType,
         notes: formData.notes,
-      }).select().single();
-
-      if (error) throw error;
+      });
 
       toast({
         title: "Vehicle Posted Successfully",
         description: "Now let's find a courier for your shipment.",
       });
-      
+
       setIsPostVehicleOpen(false);
       setFormData(createEmptyFormData());
-      
-      // Open auto matching modal
+
       if (lead) {
         setCurrentLeadId(lead.id);
         setCurrentLeadPrice(price);
-        // Use pickup coordinates if available, otherwise default
         if (formData.pickupCoordinates.latitude && formData.pickupCoordinates.longitude) {
-          setCurrentPickupCoords({ 
-            lat: formData.pickupCoordinates.latitude, 
-            lng: formData.pickupCoordinates.longitude 
+          setCurrentPickupCoords({
+            lat: formData.pickupCoordinates.latitude,
+            lng: formData.pickupCoordinates.longitude,
           });
         }
         setIsAutoMatchingOpen(true);
       }
     } catch (error) {
-      console.error('Error saving lead:', error);
+      console.error("Error saving lead:", error);
       toast({
         title: "Error",
         description: "Failed to save vehicle listing. Please try again.",
