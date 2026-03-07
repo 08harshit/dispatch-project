@@ -170,8 +170,8 @@ router.get("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Resp
  */
 router.post("/", async (req: Request, res: Response) => {
     try {
-        const result = await courierService.createCourier(req.body);
-        res.json({ success: true, data: result, message: "Courier created" });
+        const courier = await courierService.createCourier(req.body);
+        res.status(201).json({ success: true, data: courier, message: "Courier created" });
     } catch (err: any) {
         logger.error({ err }, "Error in POST /couriers");
         res.status(500).json({ success: false, error: err.message });
@@ -202,8 +202,8 @@ router.post("/", async (req: Request, res: Response) => {
 router.put("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
     try {
         const { id } = req.params;
-        await courierService.updateCourier(id, req.body);
-        res.json({ success: true, message: `Courier ${id} updated` });
+        const courier = await courierService.updateCourier(id, req.body);
+        res.json({ success: true, data: courier, message: `Courier ${id} updated` });
     } catch (err: any) {
         logger.error({ err, courierId: req.params.id }, "Error updating courier");
         res.status(500).json({ success: false, error: err.message });
@@ -228,10 +228,10 @@ router.put("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Resp
 router.patch("/:id/status", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
     try {
         const { id } = req.params;
-        const result = await courierService.toggleStatus(id);
+        const courier = await courierService.toggleStatus(id);
         res.json({
             success: true,
-            data: result,
+            data: courier,
             message: `Courier ${id} status toggled`,
         });
     } catch (err: any) {
@@ -258,8 +258,8 @@ router.patch("/:id/status", validateUuidParam(), async (req: Request<IdParams>, 
 router.delete("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
     try {
         const { id } = req.params;
-        await courierService.deleteCourier(id);
-        res.json({ success: true, message: `Courier ${id} deleted` });
+        const courier = await courierService.deleteCourier(id);
+        res.json({ success: true, data: courier, message: `Courier ${id} deleted` });
     } catch (err: any) {
         logger.error({ err, courierId: req.params.id }, "Error deleting courier");
         res.status(500).json({ success: false, error: err.message });
@@ -402,8 +402,8 @@ router.patch(
     async (req: Request<IdParams>, res: Response) => {
         try {
             const { id } = req.params;
-            await courierService.setCompliance(id, req.body.compliance);
-            res.json({ success: true, message: `Compliance updated to ${req.body.compliance}` });
+            const courier = await courierService.setCompliance(id, req.body.compliance);
+            res.json({ success: true, data: courier, message: `Compliance updated to ${req.body.compliance}` });
         } catch (err: any) {
             logger.error({ err, courierId: req.params.id }, "Error updating compliance");
             res.status(500).json({ success: false, error: err.message });

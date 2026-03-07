@@ -9,7 +9,7 @@ import courierRoutes from "./couriers";
 import shipperRoutes from "./shippers";
 import loadRoutes from "./loads";
 import contractRoutes from "./contracts";
-// import tripRoutes from "./trips"; // MODULE DISABLED
+import tripRoutes from "./trips";
 import ticketRoutes from "./tickets";
 import dashboardRoutes from "./dashboard";
 import accountingRoutes from "./accounting";
@@ -95,7 +95,7 @@ router.use("/couriers", courierRoutes);
 router.use("/shippers", shipperRoutes);
 router.use("/loads", loadRoutes);
 router.use("/contracts", contractRoutes);
-// router.use("/trips", tripRoutes); // MODULE DISABLED
+router.use("/trips", tripRoutes);
 router.use("/tickets", ticketRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/accounting", accountingRoutes);

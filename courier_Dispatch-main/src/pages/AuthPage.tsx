@@ -44,7 +44,7 @@ const AuthPage = () => {
   }, []);
 
   if (user && view !== "reset") {
-    navigate("/");
+    navigate("/dashboard");
     return null;
   }
 
@@ -73,7 +73,7 @@ const AuthPage = () => {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
         toast.success("Password updated");
-        navigate("/");
+        navigate("/dashboard");
       } else {
         const result = authSchema.safeParse({ email, password });
         if (!result.success) {
@@ -99,7 +99,7 @@ const AuthPage = () => {
             toast.success("Account created! You can now sign in.");
           } else {
             toast.success("Welcome back!");
-            navigate("/");
+            navigate("/dashboard");
           }
         }
       }

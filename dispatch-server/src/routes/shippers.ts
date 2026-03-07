@@ -553,7 +553,12 @@ router.delete("/:id", validateUuidParam("id"), async (req: Request, res: Respons
         }
 
         await shipperHistoryRepo.addEntry(id, "Shipper deleted (soft)");
-        res.json({ success: true, message: "Shipper deleted" });
+        const [history, documents] = await Promise.all([
+            shipperHistoryRepo.findByShipperId(id),
+            shipperDocumentRepo.findByShipperId(id),
+        ]);
+        const shipper = mapRowToShipper(result.data as unknown as Record<string, unknown>, history, documents);
+        res.json({ success: true, data: shipper, message: "Shipper deleted" });
     } catch (err: unknown) {
         res.status(500).json({
             success: false,

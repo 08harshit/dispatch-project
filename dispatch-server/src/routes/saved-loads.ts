@@ -155,6 +155,13 @@ router.delete("/by-lead", async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, error: "lead_id is required; courier_id required or send Authorization: Bearer <token>" });
         }
 
+        const { data: existing } = await supabaseAdmin
+            .from("saved_loads")
+            .select("id, lead_id, courier_id, saved_at")
+            .eq("courier_id", courier_id)
+            .eq("lead_id", lead_id)
+            .maybeSingle();
+
         const { error } = await supabaseAdmin
             .from("saved_loads")
             .delete()
@@ -166,7 +173,7 @@ router.delete("/by-lead", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
-        res.json({ success: true, message: "Saved load removed" });
+        res.json({ success: true, data: existing || { id: null, lead_id, courier_id }, message: "Saved load removed" });
     } catch (err: any) {
         logger.error({ err }, "Error in DELETE /saved-loads/by-lead");
         res.status(500).json({ success: false, error: err.message });
@@ -183,6 +190,13 @@ router.delete("/by-lead", async (req: Request, res: Response) => {
 router.delete("/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
+
+        const { data: existing } = await supabaseAdmin
+            .from("saved_loads")
+            .select("id, lead_id, courier_id, saved_at")
+            .eq("id", id)
+            .maybeSingle();
+
         const { error } = await supabaseAdmin
             .from("saved_loads")
             .delete()
@@ -193,7 +207,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, error: (error as any).message });
         }
 
-        res.json({ success: true, message: "Saved load removed" });
+        res.json({ success: true, data: existing || { id, lead_id: null, courier_id: null }, message: "Saved load removed" });
     } catch (err: any) {
         logger.error({ err }, "Error in DELETE /saved-loads/:id");
         res.status(500).json({ success: false, error: err.message });

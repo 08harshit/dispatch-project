@@ -13,8 +13,8 @@ This document tracks what is completed, in progress, and remaining across the Di
 | Portal | App Path | Auth Entry | Typical Port (dev) |
 |--------|----------|------------|-------------------|
 | **Admin** | `Admin_Dispatch-main/` | `/auth` | 8080 |
-| **Courier** | `courier_Dispatch-main/` | Auth page (e.g. `/auth`) | 8080 |
-| **Shipper** | `Shipper_Dispatch-main/` | `/landing` (AuthForm in section) | 8080 |
+| **Courier** | `courier_Dispatch-main/` | `/` or `/auth` | 8081 |
+| **Shipper** | `Shipper_Dispatch-main/` | `/landing` (AuthForm in section) | 8082 |
 
 **Differentiation today:**
 - Users reach the correct portal by URL (admin.example.com vs courier.example.com vs shipper.example.com).
@@ -36,16 +36,14 @@ This document tracks what is completed, in progress, and remaining across the Di
 
 | Portal | Status | Notes |
 |--------|--------|-------|
-| **Admin** | Done, pushed | Commit `b16f5da` on `feature/forgot-password` |
-| **Courier** | Done, not pushed | Implemented in `AuthPage.tsx` |
-| **Shipper** | Done, not pushed | Implemented in `AuthForm.tsx` |
-
-**Action:** Commit and push Courier and Shipper forgot password.
+| **Admin** | Done | Implemented in `Auth.tsx` with forgot/reset views |
+| **Courier** | Done | Implemented in `AuthPage.tsx`; `/auth` route added |
+| **Shipper** | Done | Implemented in `AuthForm.tsx` |
 
 **Supabase:** Add redirect URLs for password reset in Supabase dashboard, e.g.:
 - Admin: `http://localhost:8080/auth`, production URL
-- Courier: `http://localhost:8081/auth` (or Courier port)
-- Shipper: `http://localhost:8082/landing` (or Shipper port)
+- Courier: `http://localhost:8081/auth`
+- Shipper: `http://localhost:8082/landing`
 
 ---
 
@@ -71,10 +69,12 @@ This document tracks what is completed, in progress, and remaining across the Di
 
 | Item | Status | Notes |
 |------|--------|-------|
-| **Trips API** | Disabled | `tripRoutes` commented out in `dispatch-server/src/routes/index.ts` |
-| **Trip events API** | Exists | `POST /api/trips/:id/events` in trips router (not reachable while trips disabled) |
-| **Admin: record pickup/delivery scan** | Not done | TripDetail has no "Record pickup scan" / "Record delivery scan" actions |
-| **Enable trips route** | Pending | Uncomment `tripRoutes` in routes index |
+| **Trips API** | Enabled | `tripRoutes` active in `dispatch-server/src/routes/index.ts` |
+| **Trip events API** | Exists | `POST /api/trips/:id/events` for pickup_scan, delivery_scan |
+| **Trip cancellation** | Done | `PATCH /api/trips/:id` with `status: "cancelled"`; TripDetail has Cancel button |
+| **Trip notification lifecycle** | Done | courier_assigned, trip_started, trip_completed, trip_cancelled send to courier, shipper, admin |
+| **Admin Trips page** | Enabled | Trips list and TripDetail with scan recording and cancel |
+| **Admin: record pickup/delivery scan** | Done | TripDetail has scan recording actions |
 
 ---
 
@@ -113,7 +113,7 @@ This document tracks what is completed, in progress, and remaining across the Di
 | Item | Status | Notes |
 |------|--------|-------|
 | **Vehicle Access page** | Not done | Backend ready; no Admin UI for active vehicle_access records |
-| **Trip events from Admin** | Not done | Add "Record pickup scan" / "Record delivery scan" in TripDetail |
+| **Trip events from Admin** | Done | TripDetail has "Record pickup scan" / "Record delivery scan" actions |
 | **Admin Plus (impersonation)** | Not done | Client selector to view as courier/shipper; `X-Impersonate-User-Id` |
 | **Settings Company/Security** | UI only | No real save; no schema |
 
@@ -123,15 +123,25 @@ This document tracks what is completed, in progress, and remaining across the Di
 |------|--------|
 | Vehicle Access modal (instead of page nav) | Not done |
 | Client-side filtering | Not done |
-| Dashboard metric card links | Admin done; Courier/Shipper have links |
+| Dashboard metric card links | Done (Admin, Courier, Shipper) |
 
-### 7.4 Not Started
+### 7.4 Courier and Shipper Parity (Done)
+
+| Item | Status |
+|------|--------|
+| Offline overlay | Done (both apps) |
+| Auth error handling (hash, OTP) | Done (both apps) |
+| API 401 redirect | Done (both apps) |
+| Query retry disabled when offline | Done (both apps) |
+| Forgot password | Done (both apps) |
+| URL-based dashboard routing (Courier) | Done |
+
+### 7.5 Not Started
 
 | Item | Notes |
 |------|-------|
 | **Chat / bidding window** | In-app chat; time-limited bidding |
 | **Smart planner** | Split load across multiple vehicles |
-| **Notifications (lifecycle)** | Agreement, trip starting, about to end (beyond trip-completed) |
 
 ---
 
@@ -139,19 +149,21 @@ This document tracks what is completed, in progress, and remaining across the Di
 
 | Category | Item | Status |
 |----------|------|--------|
-| Auth | Forgot password (Courier, Shipper) | Done, not pushed |
+| Auth | Forgot password (Admin, Courier, Shipper) | Done |
 | Auth | Role-based API enforcement | Not done |
 | Auth | Single vs multi-portal clarity | Documented; no enforcement |
 | State | Global state management | In development (partner) |
 | Contracts | API + Shipper accept bid | Done |
 | Contracts | Contract detail page | Not done |
-| Trips | Enable trips route | Pending |
-| Trips | Admin record pickup/delivery scan | Not done |
+| Trips | Trips route + TripDetail + cancellation | Done |
+| Trips | Trip notification lifecycle (courier, shipper, admin) | Done |
 | GPS | Schema, API, map integration | Not started |
 | Backend | Vehicles, vehicle-access routes | Disabled |
 | Backend | Shipper status/delete, history/docs | Stub |
-| Admin | Vehicle Access page, Trip events, Admin Plus | Not done |
+| Backend | Entity return on save/update/delete | Done |
+| Admin | Vehicle Access page, Admin Plus | Not done |
+| Courier/Shipper | Offline overlay, auth error handling, API 401, dashboard links | Done |
 
 ---
 
-*Last updated: reflects current codebase state including Courier/Shipper completion plan work.*
+*Last updated: reflects trip notification lifecycle, Courier/Shipper parity, and backend entity return work.*

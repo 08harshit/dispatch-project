@@ -107,6 +107,32 @@ This document tracks planned improvements and features for later implementation.
 
 ---
 
-## 4. Other Future Items
+## 4. Forgot Password Functionality While Login
+
+**Current behavior:** The login page does not offer a "Forgot password?" link or flow. Users who cannot remember their password have no way to reset it from the UI.
+
+**Planned behavior:** Add a "Forgot password?" link on the login screen. When clicked, show a form or flow to enter the user's email address. Send a password reset email via Supabase Auth (or the configured auth provider). User receives the email, clicks the link, and is redirected to a reset-password page where they can set a new password.
+
+### Requirements
+
+1. **Login page:** Add a "Forgot password?" link below the login form.
+2. **Reset request flow:** User enters email; call Supabase `auth.resetPasswordForEmail(email)`.
+3. **Reset confirmation:** Show success message instructing user to check their email.
+4. **Reset password page:** Handle the redirect from the email link (Supabase typically uses `#access_token=...` or similar). Provide a form to enter and confirm new password.
+
+### Benefits
+
+- Users can recover access without admin intervention
+- Standard auth flow expected by most users
+
+### Implementation notes
+
+- Supabase Auth: `supabase.auth.resetPasswordForEmail(email, { redirectTo: '...' })`
+- Ensure redirect URL is configured in Supabase dashboard for the reset link
+- Handle the auth callback URL (e.g., `/auth/callback` or `/reset-password`) to show the new-password form
+
+---
+
+## 5. Other Future Items
 
 (Add additional future work items here as they are identified.)

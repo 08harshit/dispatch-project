@@ -219,8 +219,8 @@ router.patch("/:id/status", validateUuidParam("id"), validateBody(updateStatusSc
  */
 router.delete("/:id", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
     try {
-        await loadService.deleteLoad(req.params.id);
-        res.json({ success: true, message: "Load cancelled" });
+        const load = await loadService.deleteLoad(req.params.id);
+        res.json({ success: true, data: load, message: "Load cancelled" });
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
     }

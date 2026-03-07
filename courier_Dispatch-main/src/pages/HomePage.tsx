@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Package, DollarSign, Users, Clock, ArrowUpRight, TrendingUp, Activity, ChevronRight, ScanLine, Car, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VinScannerDialog } from "@/components/loads/VinScannerDialog";
@@ -10,11 +11,7 @@ import { toast } from "sonner";
 import { generateInvoice } from "@/utils/generateInvoice";
 import type { Load } from "@/components/loads/LoadsTable";
 
-interface HomePageProps {
-  onNavigate?: (page: string) => void;
-}
-
-export const HomePage = ({ onNavigate }: HomePageProps) => {
+export const HomePage = () => {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [invoiceScannerOpen, setInvoiceScannerOpen] = useState(false);
   const [bolViewerOpen, setBolViewerOpen] = useState(false);
@@ -122,12 +119,11 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
         {stats.map((stat, i) => {
           const isEmerald = stat.color === 'emerald';
           return (
-            <button
+            <Link
               key={i}
-              type="button"
-              onClick={() => onNavigate?.(stat.page)}
+              to={`/dashboard/${stat.page}`}
               className={cn(
-                "group p-4 bg-white border rounded-xl hover:shadow-md transition-all duration-300 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2",
+                "group p-4 bg-white border rounded-xl hover:shadow-md transition-all duration-300 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 block",
                 isEmerald ? "border-emerald-100 hover:border-emerald-200" : "border-amber-100 hover:border-amber-200"
               )}
             >
@@ -150,7 +146,7 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               </div>
               <p className="text-xs text-stone-400 font-medium">{stat.label}</p>
               <p className="text-xl font-bold text-stone-700">{stat.value}</p>
-            </button>
+            </Link>
           );
         })}
       </div>
