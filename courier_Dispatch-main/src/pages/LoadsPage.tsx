@@ -16,6 +16,8 @@ import { Load } from "@/components/loads/LoadsTable";
 import { useLoadNotifications, LoadNotification } from "@/hooks/useLoadNotifications";
 import { useRoutePlanner } from "@/hooks/useRoutePlanner";
 import { useBookmarks } from "@/hooks/useBookmarks";
+import { useAuth } from "@/hooks/useAuth";
+import { useSavedLoads } from "@/hooks/useSavedLoads";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,6 +29,8 @@ export const LoadsPage = () => {
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   const { addLoad, isInRoute } = useRoutePlanner();
   const { toggleBookmark, isBookmarked, bookmarkCount, bookmarkedIds } = useBookmarks();
+  const { user } = useAuth();
+  const { isSaved: isSavedByLead, toggleSave: onToggleSaveByLead } = useSavedLoads(!!user);
 
   // Main tab: available vs assigned vs bookmarked
   const [mainTab, setMainTab] = useState<"available" | "assigned" | "bookmarked">("available");
@@ -439,6 +443,8 @@ export const LoadsPage = () => {
               loading={availableLoading}
               isBookmarked={isBookmarked}
               onToggleBookmark={toggleBookmark}
+              isSavedByLead={user ? isSavedByLead : undefined}
+              onToggleSaveByLead={user ? (leadId) => onToggleSaveByLead(leadId).catch(() => toast.error("Failed to save")) : undefined}
             />
           ) : (
             <RouteDayPlanner
@@ -487,6 +493,8 @@ export const LoadsPage = () => {
                 onAddToRoute={handleAddToRoute}
                 isBookmarked={isBookmarked}
                 onToggleBookmark={toggleBookmark}
+                isSavedByLead={user ? isSavedByLead : undefined}
+                onToggleSaveByLead={user ? (leadId) => onToggleSaveByLead(leadId).catch(() => toast.error("Failed to save")) : undefined}
               />
             </div>
           )}

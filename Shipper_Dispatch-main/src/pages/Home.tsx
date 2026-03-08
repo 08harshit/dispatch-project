@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Package, DollarSign, Users, Clock, Truck, FileText, BarChart3, ArrowUpRight, Sparkles, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,34 +8,10 @@ const Home = () => {
   const currentDate = format(new Date(), "EEE, MMM d");
 
   const stats = [
-    { 
-      label: "Active Shipments", 
-      value: "24", 
-      trend: "+12%", 
-      icon: Package, 
-      positive: true 
-    },
-    { 
-      label: "Spends", 
-      value: "$45,280", 
-      trend: "+8%", 
-      icon: DollarSign, 
-      positive: true 
-    },
-    { 
-      label: "Total Shipment", 
-      value: "156", 
-      trend: "+5%", 
-      icon: Truck, 
-      positive: true 
-    },
-    { 
-      label: "On-Time Rate", 
-      value: "94.2%", 
-      trend: "+2%", 
-      icon: Clock, 
-      positive: true 
-    },
+    { label: "Active Shipments", value: "24", trend: "+12%", icon: Package, positive: true, path: "/shipping" },
+    { label: "Spends", value: "$45,280", trend: "+8%", icon: DollarSign, positive: true, path: "/accounting" },
+    { label: "Total Shipment", value: "156", trend: "+5%", icon: Truck, positive: true, path: "/shipping" },
+    { label: "On-Time Rate", value: "94.2%", trend: "+2%", icon: Clock, positive: true, path: "/analytics" },
   ];
 
   const quickActions = [
@@ -117,22 +94,24 @@ const Home = () => {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
-            <Card key={stat.label} className="dashboard-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <stat.icon className="w-5 h-5 text-primary" />
+            <Link key={stat.label} to={stat.path} className="block focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg">
+              <Card className="dashboard-card border-border cursor-pointer hover:border-primary/30 transition-colors h-full">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <stat.icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <span className={`text-xs font-semibold ${stat.positive ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {stat.trend}
+                    </span>
                   </div>
-                  <span className={`text-xs font-semibold ${stat.positive ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {stat.trend}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold text-foreground mt-0.5">{stat.value}</p>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="mt-4">
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold text-foreground mt-0.5">{stat.value}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
 
@@ -144,25 +123,24 @@ const Home = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {quickActions.map((action) => (
-              <Card 
-                key={action.label} 
-                className="dashboard-card border-border cursor-pointer hover:border-primary/30 transition-colors"
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                        <action.icon className="w-5 h-5 text-primary" />
+              <Link key={action.label} to={action.path} className="block focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg">
+                <Card className="dashboard-card border-border cursor-pointer hover:border-primary/30 transition-colors h-full">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <action.icon className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{action.label}</p>
+                          <p className="text-xs text-muted-foreground">{action.description}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-foreground">{action.label}</p>
-                        <p className="text-xs text-muted-foreground">{action.description}</p>
-                      </div>
+                      <ArrowUpRight className="w-5 h-5 text-muted-foreground" />
                     </div>
-                    <ArrowUpRight className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         </div>

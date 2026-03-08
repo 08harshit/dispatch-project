@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getColorClasses } from "@/utils/styleHelpers";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,11 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { 
-  User, 
-  Bell, 
-  Shield, 
-  Building, 
+import {
+  User,
+  Bell,
+  Shield,
+  Building,
   Settings as SettingsIcon,
   Mail,
   Smartphone,
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
+import { getProfile, updateProfile, getNotifications, updateNotifications, updatePassword } from "@/services/settingsService";
 
 const settingsCategories = [
   { id: "profile", label: "Profile", icon: User, color: "primary" },
@@ -53,22 +55,7 @@ const notificationSettings = [
   { id: "urgent", label: "Urgent Alerts Only", description: "Only receive urgent notifications", icon: AlertTriangle, enabled: false },
 ];
 
-const getColorClasses = (color: string) => {
-  switch (color) {
-    case "success":
-      return { bg: "bg-success/10", text: "text-success", gradient: "from-success/20 via-success/5 to-transparent", border: "bg-success" };
-    case "primary":
-      return { bg: "bg-primary/10", text: "text-primary", gradient: "from-primary/20 via-primary/5 to-transparent", border: "bg-primary" };
-    case "warning":
-      return { bg: "bg-warning/10", text: "text-warning", gradient: "from-warning/20 via-warning/5 to-transparent", border: "bg-warning" };
-    case "accent":
-      return { bg: "bg-accent/10", text: "text-accent", gradient: "from-accent/20 via-accent/5 to-transparent", border: "bg-accent" };
-    case "info":
-      return { bg: "bg-primary/10", text: "text-primary", gradient: "from-primary/20 via-primary/5 to-transparent", border: "bg-primary" };
-    default:
-      return { bg: "bg-primary/10", text: "text-primary", gradient: "from-primary/20 via-primary/5 to-transparent", border: "bg-primary" };
-  }
-};
+// getColorClasses is now imported from @/utils/styleHelpers
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
@@ -79,6 +66,29 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [profile, setProfile] = useState<{ displayName: string; email: string }>({ displayName: "", email: "" });
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [notificationsSaving, setNotificationsSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  useEffect(() => {
+    Promise.all([getProfile(), getNotifications()])
+      .then(([profileData, notifData]) => {
+        setProfile({
+          displayName: profileData.displayName ?? "",
+          email: profileData.email ?? "",
+        });
+        setNotifications(prev =>
+          prev.map(n => ({
+            ...n,
+            enabled: n.id === "email" ? (notifData.email ?? true) : n.id === "push" ? (notifData.push ?? true) : n.id === "urgent" ? (notifData.urgentOnly ?? false) : n.enabled,
+          }))
+        );
+      })
+      .catch(() => toast.error("Failed to load settings"))
+      .finally(() => setSettingsLoading(false));
+  }, []);
 
   const getPasswordStrength = (password: string) => {
     if (!password) return { score: 0, label: "", color: "" };
@@ -98,32 +108,67 @@ export default function Settings() {
   const passwordsMismatch = newPassword && confirmPassword && newPassword !== confirmPassword;
 
   const toggleNotification = (id: string) => {
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, enabled: !n.enabled } : n)
     );
   };
 
-  const handleSave = (section: string) => {
-    toast.success(`${section} settings saved successfully!`);
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      await updateProfile({ displayName: profile.displayName || undefined });
+      toast.success("Profile saved successfully");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save profile");
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
-  const handlePasswordChange = () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      toast.error("Veuillez remplir tous les champs");
+  const handleSaveNotifications = async () => {
+    setNotificationsSaving(true);
+    try {
+      const email = notifications.find(n => n.id === "email")?.enabled ?? true;
+      const push = notifications.find(n => n.id === "push")?.enabled ?? true;
+      const urgentOnly = notifications.find(n => n.id === "urgent")?.enabled ?? false;
+      await updateNotifications({ email, push, urgentOnly });
+      toast.success("Notification preferences saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save notifications");
+    } finally {
+      setNotificationsSaving(false);
+    }
+  };
+
+  const handleSave = (section: string) => {
+    toast.info(`${section} settings — coming soon`);
+  };
+
+  const handlePasswordChange = async () => {
+    if (!newPassword || !confirmPassword) {
+      toast.error("Please fill in new password and confirmation");
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("Les mots de passe ne correspondent pas");
+      toast.error("Passwords do not match");
       return;
     }
     if (passwordStrength.score < 50) {
-      toast.error("Le mot de passe est trop faible");
+      toast.error("Password is too weak");
       return;
     }
-    toast.success("Mot de passe modifié avec succès !");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    setPasswordSaving(true);
+    try {
+      await updatePassword(newPassword);
+      toast.success("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to change password");
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   return (
@@ -141,6 +186,7 @@ export default function Settings() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="animate-fade-in">
               <div className="flex items-center gap-3">
+                <div className="h-12 w-1.5 rounded-full bg-gradient-to-b from-primary to-primary/50 flex-shrink-0" />
                 <div className="p-2.5 rounded-xl bg-primary/10">
                   <SettingsIcon className="h-6 w-6 text-primary" />
                 </div>
@@ -168,14 +214,13 @@ export default function Settings() {
               <button
                 key={category.id}
                 onClick={() => setActiveSection(category.id)}
-                className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 animate-fade-in ${
-                  isActive ? 'bg-card border-primary/30 shadow-glow' : 'bg-card/80 backdrop-blur-sm'
-                }`}
+                className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-500 hover:shadow-elevated hover:-translate-y-1 animate-fade-in ${isActive ? 'bg-card border-primary/30 shadow-glow' : 'bg-card/80 backdrop-blur-sm'
+                  }`}
                 style={{ animationDelay: `${index * 100}ms` }}
               >
                 {/* Hover gradient overlay */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                
+
                 {/* Active indicator */}
                 {isActive && (
                   <div className="absolute top-2 right-2">
@@ -185,7 +230,7 @@ export default function Settings() {
                     </span>
                   </div>
                 )}
-                
+
                 <div className="relative flex items-center gap-3">
                   <div className={`p-2.5 rounded-xl ${colors.bg} transition-transform duration-300 group-hover:scale-110`}>
                     <category.icon className={`h-5 w-5 ${colors.text}`} />
@@ -216,6 +261,13 @@ export default function Settings() {
             {/* Profile Settings */}
             {activeSection === "profile" && (
               <Card className="overflow-hidden border bg-card/80 backdrop-blur-sm animate-fade-in">
+                {settingsLoading && (
+                  <CardContent className="p-6 flex items-center justify-center text-muted-foreground">
+                    Loading profile...
+                  </CardContent>
+                )}
+                {!settingsLoading && (
+                <>
                 <CardHeader className="border-b bg-muted/30">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/10">
@@ -250,11 +302,24 @@ export default function Settings() {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="name" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Full Name</Label>
-                      <Input id="name" placeholder="John Doe" className="bg-muted/30 border-muted-foreground/20 focus:border-primary" />
+                      <Input
+                        id="name"
+                        placeholder="John Doe"
+                        value={profile.displayName}
+                        onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))}
+                        className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Email Address</Label>
-                      <Input id="email" type="email" placeholder="john@company.com" className="bg-muted/30 border-muted-foreground/20 focus:border-primary" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="john@company.com"
+                        value={profile.email}
+                        readOnly
+                        className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Phone Number</Label>
@@ -270,12 +335,14 @@ export default function Settings() {
                   </div>
 
                   <div className="flex justify-end pt-4 border-t">
-                    <Button onClick={() => handleSave("Profile")} className="gap-2">
+                    <Button onClick={handleSaveProfile} className="gap-2" disabled={profileSaving}>
                       <Save className="h-4 w-4" />
-                      Save Changes
+                      {profileSaving ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
                 </CardContent>
+                </>
+                )}
               </Card>
             )}
 
@@ -354,12 +421,10 @@ export default function Settings() {
                         style={{ animationDelay: `${index * 50}ms` }}
                       >
                         <div className="flex items-center gap-4">
-                          <div className={`p-2.5 rounded-xl transition-all duration-300 ${
-                            notification.enabled ? 'bg-primary/10' : 'bg-muted/50'
-                          }`}>
-                            <notification.icon className={`h-5 w-5 transition-colors duration-300 ${
-                              notification.enabled ? 'text-primary' : 'text-muted-foreground'
-                            }`} />
+                          <div className={`p-2.5 rounded-xl transition-all duration-300 ${notification.enabled ? 'bg-primary/10' : 'bg-muted/50'
+                            }`}>
+                            <notification.icon className={`h-5 w-5 transition-colors duration-300 ${notification.enabled ? 'text-primary' : 'text-muted-foreground'
+                              }`} />
                           </div>
                           <div>
                             <p className="font-semibold text-foreground">{notification.label}</p>
@@ -370,7 +435,7 @@ export default function Settings() {
                           checked={notification.enabled}
                           onCheckedChange={() => toggleNotification(notification.id)}
                         />
-                        
+
                         {/* Hover glow effect */}
                         <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-lg" />
                       </div>
@@ -378,9 +443,9 @@ export default function Settings() {
                   </div>
 
                   <div className="p-4 bg-muted/30 border-t flex justify-end">
-                    <Button onClick={() => handleSave("Notification")} className="gap-2">
+                    <Button onClick={handleSaveNotifications} className="gap-2" disabled={notificationsSaving}>
                       <Save className="h-4 w-4" />
-                      Save Preferences
+                      {notificationsSaving ? "Saving..." : "Save Preferences"}
                     </Button>
                   </div>
                 </CardContent>
@@ -483,11 +548,10 @@ export default function Settings() {
                         <div className="space-y-2 animate-fade-in">
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">Force du mot de passe</span>
-                            <span className={`text-xs font-semibold ${
-                              passwordStrength.score <= 25 ? 'text-destructive' :
-                              passwordStrength.score <= 50 ? 'text-warning' :
-                              passwordStrength.score <= 75 ? 'text-primary' : 'text-success'
-                            }`}>{passwordStrength.label}</span>
+                            <span className={`text-xs font-semibold ${passwordStrength.score <= 25 ? 'text-destructive' :
+                                passwordStrength.score <= 50 ? 'text-warning' :
+                                  passwordStrength.score <= 75 ? 'text-primary' : 'text-success'
+                              }`}>{passwordStrength.label}</span>
                           </div>
                           <div className="h-2 rounded-full bg-muted overflow-hidden">
                             <div
@@ -522,9 +586,8 @@ export default function Settings() {
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder="••••••••"
-                          className={`pl-10 pr-10 bg-background/50 border-muted-foreground/20 focus:border-primary ${
-                            passwordsMatch ? 'border-success/50' : passwordsMismatch ? 'border-destructive/50' : ''
-                          }`}
+                          className={`pl-10 pr-10 bg-background/50 border-muted-foreground/20 focus:border-primary ${passwordsMatch ? 'border-success/50' : passwordsMismatch ? 'border-destructive/50' : ''
+                            }`}
                         />
                         <button
                           type="button"
@@ -567,9 +630,8 @@ export default function Settings() {
                       ].map((session, index) => (
                         <div
                           key={index}
-                          className={`group flex items-center justify-between p-3 rounded-xl border transition-all duration-300 hover:shadow-sm animate-fade-in ${
-                            session.current ? 'bg-success/5 border-success/20' : 'bg-muted/10'
-                          }`}
+                          className={`group flex items-center justify-between p-3 rounded-xl border transition-all duration-300 hover:shadow-sm animate-fade-in ${session.current ? 'bg-success/5 border-success/20' : 'bg-muted/10'
+                            }`}
                           style={{ animationDelay: `${index * 60}ms` }}
                         >
                           <div className="flex items-center gap-3">
@@ -601,9 +663,9 @@ export default function Settings() {
                       <RefreshCw className="h-3.5 w-3.5" />
                       Générer un mot de passe
                     </Button>
-                    <Button onClick={handlePasswordChange} className="gap-2">
+                    <Button onClick={handlePasswordChange} className="gap-2" disabled={passwordSaving}>
                       <Save className="h-4 w-4" />
-                      Mettre à jour
+                      {passwordSaving ? "Saving..." : "Update"}
                     </Button>
                   </div>
                 </CardContent>
@@ -631,16 +693,16 @@ export default function Settings() {
                       <Lock className="h-4 w-4 text-muted-foreground" />
                       <h4 className="font-semibold text-foreground">Change Password</h4>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="currentPassword" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Password</Label>
                         <div className="relative">
                           <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="currentPassword" 
-                            type={showPassword ? "text" : "password"} 
-                            className="pl-10 pr-10 bg-muted/30 border-muted-foreground/20 focus:border-primary" 
+                          <Input
+                            id="currentPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="pl-10 pr-10 bg-muted/30 border-muted-foreground/20 focus:border-primary"
                           />
                           <button
                             type="button"
@@ -654,18 +716,18 @@ export default function Settings() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="newPassword" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">New Password</Label>
-                          <Input 
-                            id="newPassword" 
-                            type={showPassword ? "text" : "password"} 
-                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary" 
+                          <Input
+                            id="newPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
                           />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="confirmPassword" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Confirm Password</Label>
-                          <Input 
-                            id="confirmPassword" 
-                            type={showPassword ? "text" : "password"} 
-                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary" 
+                          <Input
+                            id="confirmPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="bg-muted/30 border-muted-foreground/20 focus:border-primary"
                           />
                         </div>
                       </div>

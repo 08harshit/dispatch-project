@@ -8,7 +8,10 @@ import swaggerUi from "swagger-ui-express";
 import { config } from "./config";
 import { swaggerSpec } from "./config/swagger";
 import { errorHandler } from "./middleware/errorHandler";
+import { logger } from "./utils/logger";
 import routes from "./routes";
+import { expireVehicleAccess } from "./services/vehicleAccessExpiry";
+import { processNotificationLog } from "./services/notificationService";
 
 const app = express();
 
@@ -20,10 +23,10 @@ app.use(express.urlencoded({ extended: true }));
 // --------------- CORS ---------------
 app.use(
     cors({
-        origin: config.cors.origins,
+        origin: true, // Reflects the incoming origin completely
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"],
+        allowedHeaders: ["Content-Type", "Authorization", "X-Cron-Secret"],
     })
 );
 
@@ -58,11 +61,45 @@ app.use("/api", routes);
 app.use(errorHandler);
 
 // --------------- Start ---------------
-app.listen(config.port, () => {
-    console.log(`\n🚀 Dispatch Server running on http://localhost:${config.port}`);
-    console.log(`📡 Environment: ${config.nodeEnv}`);
-    console.log(`🔗 Supabase: ${config.supabase.url}`);
-    console.log(`📖 API Docs: http://localhost:${config.port}/api-docs\n`);
+const PORT = config.port;
+const server = app.listen(PORT, () => {
+    logger.info(`Dispatch Server running on http://localhost:${PORT}`);
+    logger.info(`Environment: ${config.nodeEnv}`);
+    logger.info(`Supabase: ${config.supabase.url}`);
+    logger.info(`API Docs: http://localhost:${PORT}/api-docs`);
+
+    // Vehicle access expiry: run every 10 minutes
+    const EXPIRY_INTERVAL_MS = 10 * 60 * 1000;
+    setInterval(async () => {
+        const result = await expireVehicleAccess();
+        if (result.error) {
+            logger.error({ err: result.error }, "[vehicleAccessExpiry]");
+        } else if (result.expired > 0) {
+            logger.info({ expired: result.expired }, "[vehicleAccessExpiry] expired record(s)");
+        }
+    }, EXPIRY_INTERVAL_MS);
+
+    // Notification worker: run every 2 minutes
+    const NOTIFICATION_INTERVAL_MS = 2 * 60 * 1000;
+    setInterval(async () => {
+        const result = await processNotificationLog();
+        if (result.errors.length) {
+            logger.error({ errors: result.errors }, "[notificationWorker]");
+        } else if (result.sent > 0) {
+            logger.info({ sent: result.sent }, "[notificationWorker] sent notification(s)");
+        }
+    }, NOTIFICATION_INTERVAL_MS);
 });
+
+function gracefulShutdown(signal: string) {
+    logger.info({ signal }, "Shutdown signal received");
+    server.close(() => {
+        logger.info("Server closed");
+        process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 export default app;

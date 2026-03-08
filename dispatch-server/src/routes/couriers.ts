@@ -1,7 +1,45 @@
+/**
+ * Courier Routes — Thin Controller
+ *
+ * Each handler:
+ *   1. Parses request (params, query, body)
+ *   2. Calls the service layer
+ *   3. Sends the response
+ *
+ * No direct DB access (`supabaseAdmin` is NOT imported here).
+ */
+
 import { Router, Request, Response } from "express";
-import { supabaseAdmin } from "../config/supabase";
+import { z } from "zod";
+import { logger } from "../utils/logger";
+import { validateBody, validateUuidParam } from "../utils/validate";
+import * as courierService from "../services/courierService";
 
 const router = Router();
+
+/** Typed params for routes with `:id`. */
+type IdParams = { id: string };
+/** Typed params for routes with `:id` and `:docId`. */
+type DocParams = { id: string; docId: string };
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+/** Extract filter params from query string. */
+function parseFilters(query: Request["query"]) {
+    return {
+        search: query.search as string | undefined,
+        compliance: query.compliance === "all" ? undefined : query.compliance as string | undefined,
+        status: query.status === "all" ? undefined : query.status as string | undefined,
+        equipmentType: query.equipmentType === "all" ? undefined : query.equipmentType as string | undefined,
+        isNew: query.isNew as string | undefined,
+    };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Routes                                                             */
+/* ------------------------------------------------------------------ */
 
 /**
  * @swagger
@@ -49,125 +87,13 @@ const router = Router();
  */
 router.get("/", async (req: Request, res: Response) => {
     try {
-        const { search, compliance, status, equipmentType, isNew } = req.query;
-
-        // --- Base query ---
-        let query = supabaseAdmin.from("couriers").select("*").order("created_at", { ascending: false });
-
-        // --- Apply filters ---
-        if (compliance) {
-            query = query.eq("compliance", compliance as string);
-        }
-        if (status) {
-            query = query.eq("status", status as string);
-        }
-        if (isNew === "true") {
-            query = query.eq("is_new", true);
-        }
-        if (search) {
-            const term = `%${search}%`;
-            query = query.or(
-                `name.ilike.${term},contact_email.ilike.${term},phone.ilike.${term},usdot.ilike.${term},mc.ilike.${term}`
-            );
-        }
-
-        const { data: couriers, error } = await query;
-
-        if (error) {
-            console.error("Error fetching couriers:", error);
-            return res.status(500).json({ success: false, error: error.message });
-        }
-
-        if (!couriers || couriers.length === 0) {
-            return res.json({ success: true, data: [] });
-        }
-
-        // --- If equipmentType filter is set, get matching courier IDs ---
-        let equipmentFilteredIds: string[] | null = null;
-        if (equipmentType) {
-            const { data: truckRows } = await supabaseAdmin
-                .from("courier_trucks")
-                .select("courier_id")
-                .eq("equipment_type", equipmentType as string);
-            equipmentFilteredIds = truckRows?.map(r => r.courier_id) || [];
-        }
-
-        const courierIds = couriers.map(c => c.id);
-
-        // --- Batch fetch related data ---
-        const [trucksResult, insuranceResult, historyResult, docsResult] = await Promise.all([
-            supabaseAdmin.from("courier_trucks").select("*").in("courier_id", courierIds),
-            supabaseAdmin.from("courier_insurance").select("*").in("courier_id", courierIds).order("created_at", { ascending: false }),
-            supabaseAdmin.from("courier_history").select("*").in("courier_id", courierIds).order("created_at", { ascending: false }),
-            supabaseAdmin.from("courier_documents").select("*").in("courier_id", courierIds).order("created_at", { ascending: false }),
-        ]);
-
-        // --- Group related data by courier_id ---
-        const trucksByCourier = new Map<string, { equipment_type: string; count: number }[]>();
-        for (const t of trucksResult.data || []) {
-            if (!trucksByCourier.has(t.courier_id)) trucksByCourier.set(t.courier_id, []);
-            trucksByCourier.get(t.courier_id)!.push(t);
-        }
-
-        const insuranceByCourier = new Map<string, string>();
-        for (const ins of insuranceResult.data || []) {
-            if (!insuranceByCourier.has(ins.courier_id)) {
-                insuranceByCourier.set(ins.courier_id, ins.company_name || "");
-            }
-        }
-
-        const historyByCourier = new Map<string, { date: string; action: string }[]>();
-        for (const h of historyResult.data || []) {
-            if (!historyByCourier.has(h.courier_id)) historyByCourier.set(h.courier_id, []);
-            historyByCourier.get(h.courier_id)!.push({
-                date: h.created_at?.split("T")[0] || "",
-                action: h.action,
-            });
-        }
-
-        const docsByCourier = new Map<string, { name: string; type: string; date: string }[]>();
-        for (const d of docsResult.data || []) {
-            if (!docsByCourier.has(d.courier_id)) docsByCourier.set(d.courier_id, []);
-            docsByCourier.get(d.courier_id)!.push({
-                name: d.name,
-                type: d.type || "PDF",
-                date: d.date || d.created_at?.split("T")[0] || "",
-            });
-        }
-
-        // --- Shape response to match frontend Courier interface ---
-        let shaped = couriers.map(c => {
-            const trucks = trucksByCourier.get(c.id) || [];
-            const totalTrucks = trucks.reduce((sum, t) => sum + (t.count || 0), 0);
-            const equipmentTypes = trucks.map(t => t.equipment_type).filter(Boolean);
-
-            return {
-                id: c.id,
-                name: c.name || "",
-                contact: c.contact_email || "",
-                phone: c.phone || "",
-                compliance: c.compliance || "non-compliant",
-                address: c.address || "",
-                usdot: c.usdot || "",
-                mc: c.mc || "",
-                status: c.status || "active",
-                trucks: totalTrucks,
-                insuranceCompany: insuranceByCourier.get(c.id) || "",
-                equipmentType: equipmentTypes.join(", ") || "",
-                isNew: c.is_new || false,
-                history: historyByCourier.get(c.id) || [],
-                documents: docsByCourier.get(c.id) || [],
-            };
-        });
-
-        // --- Apply equipment type filter (post-query since it's in a separate table) ---
-        if (equipmentFilteredIds !== null) {
-            shaped = shaped.filter(c => equipmentFilteredIds!.includes(c.id));
-        }
-
-        res.json({ success: true, data: shaped });
+        const filters = parseFilters(req.query);
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        const result = await courierService.listCouriers(filters, page, limit);
+        res.json({ success: true, data: result.data, pagination: result.pagination });
     } catch (err: any) {
-        console.error("Error in GET /couriers:", err);
+        logger.error({ err }, "Error in GET /couriers");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -184,27 +110,10 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.get("/stats", async (_req: Request, res: Response) => {
     try {
-        const { data: couriers, error } = await supabaseAdmin
-            .from("couriers")
-            .select("status, compliance, is_new");
-
-        if (error) {
-            console.error("Error fetching stats:", error);
-            return res.status(500).json({ success: false, error: error.message });
-        }
-
-        const all = couriers || [];
-        const stats = {
-            total: all.length,
-            active: all.filter(c => c.status === "active").length,
-            compliant: all.filter(c => c.compliance === "compliant").length,
-            nonCompliant: all.filter(c => c.compliance === "non-compliant").length,
-            new: all.filter(c => c.is_new === true).length,
-        };
-
+        const stats = await courierService.getStats();
         res.json({ success: true, data: stats });
     } catch (err: any) {
-        console.error("Error in GET /couriers/stats:", err);
+        logger.error({ err }, "Error in GET /couriers/stats");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -232,22 +141,14 @@ router.get("/stats", async (_req: Request, res: Response) => {
  *                     data:
  *                       $ref: '#/components/schemas/Courier'
  */
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
     try {
         const { id } = req.params;
-        const { data: courier, error } = await supabaseAdmin
-            .from("couriers")
-            .select("*")
-            .eq("id", id)
-            .single();
-
-        if (error || !courier) {
-            return res.status(404).json({ success: false, error: "Courier not found" });
-        }
-
+        const courier = await courierService.getCourier(id);
         res.json({ success: true, data: courier });
     } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
+        const status = err.message === "Not found" ? 404 : 500;
+        res.status(status).json({ success: false, error: err.message });
     }
 });
 
@@ -269,109 +170,10 @@ router.get("/:id", async (req: Request, res: Response) => {
  */
 router.post("/", async (req: Request, res: Response) => {
     try {
-        const body = req.body;
-
-        // 1. Insert into couriers table
-        const { data: courier, error: courierError } = await supabaseAdmin
-            .from("couriers")
-            .insert({
-                name: body.courierName,
-                address: body.address,
-                city: body.city,
-                state: body.state,
-                zip_code: body.zipCode,
-                business_type: body.businessType || null,
-                business_phone: body.businessPhone,
-                fax: body.fax,
-                business_email: body.businessEmail,
-                contact_email: body.contactEmail || body.businessEmail,
-                phone: body.contactPhone || body.businessPhone,
-                website: body.website,
-                business_hours: body.hours,
-                timezone: body.timezone || null,
-                usdot: body.usdot,
-                usdot_link: body.usdotLink,
-                mc: body.mcNumber,
-                mc_link: body.mcLink,
-                operating_status: body.operatingStatus || null,
-                mcs150_status: body.mcs150Status || null,
-                out_of_service_date: body.outOfServiceDate || null,
-                authority_status: body.authorityStatus || null,
-                compliance: "non-compliant",
-                status: "active",
-                is_new: true,
-            })
-            .select()
-            .single();
-
-        if (courierError || !courier) {
-            console.error("Error creating courier:", courierError);
-            return res.status(500).json({ success: false, error: courierError?.message || "Failed to create courier" });
-        }
-
-        const courierId = courier.id;
-
-        // 2. Insert contact (if name provided)
-        if (body.contactName) {
-            await supabaseAdmin.from("courier_contacts").insert({
-                courier_id: courierId,
-                name: body.contactName,
-                position: body.contactPosition,
-                phone: body.contactPhone,
-                desk_phone: body.deskPhone,
-                email: body.contactEmail,
-                hours: body.contactHours,
-                is_primary: true,
-            });
-        }
-
-        // 3. Insert insurance (if company provided)
-        if (body.insuranceCompany) {
-            await supabaseAdmin.from("courier_insurance").insert({
-                courier_id: courierId,
-                company_name: body.insuranceCompany,
-                agent_name: body.insuranceAgent,
-                agent_phone: body.insurancePhone,
-                agent_email: body.insuranceEmail,
-                physical_damage_limit: body.physicalDamageLimit,
-            });
-        }
-
-        // 4. Insert trucks (if equipment type provided)
-        if (body.equipmentType) {
-            await supabaseAdmin.from("courier_trucks").insert({
-                courier_id: courierId,
-                equipment_type: body.equipmentType,
-                count: parseInt(body.numTrucks, 10) || 0,
-            });
-        }
-
-        // 5. Insert routes (split comma-separated string)
-        if (body.routes) {
-            const routeNames = body.routes
-                .split(",")
-                .map((r: string) => r.trim())
-                .filter((r: string) => r.length > 0);
-
-            if (routeNames.length > 0) {
-                await supabaseAdmin.from("courier_routes").insert(
-                    routeNames.map((name: string) => ({
-                        courier_id: courierId,
-                        route_name: name,
-                    }))
-                );
-            }
-        }
-
-        // 6. Add creation history entry
-        await supabaseAdmin.from("courier_history").insert({
-            courier_id: courierId,
-            action: "Account created",
-        });
-
-        res.json({ success: true, data: { id: courierId }, message: "Courier created" });
+        const courier = await courierService.createCourier(req.body);
+        res.status(201).json({ success: true, data: courier, message: "Courier created" });
     } catch (err: any) {
-        console.error("Error in POST /couriers:", err);
+        logger.error({ err }, "Error in POST /couriers");
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -397,8 +199,15 @@ router.post("/", async (req: Request, res: Response) => {
  *       200:
  *         description: Courier updated
  */
-router.put("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Courier ${req.params.id} updated` });
+router.put("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const { id } = req.params;
+        const courier = await courierService.updateCourier(id, req.body);
+        res.json({ success: true, data: courier, message: `Courier ${id} updated` });
+    } catch (err: any) {
+        logger.error({ err, courierId: req.params.id }, "Error updating courier");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
@@ -416,8 +225,19 @@ router.put("/:id", (req: Request, res: Response) => {
  *       200:
  *         description: Status toggled
  */
-router.patch("/:id/status", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Courier ${req.params.id} status toggled` });
+router.patch("/:id/status", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const { id } = req.params;
+        const courier = await courierService.toggleStatus(id);
+        res.json({
+            success: true,
+            data: courier,
+            message: `Courier ${id} status toggled`,
+        });
+    } catch (err: any) {
+        logger.error({ err, courierId: req.params.id }, "Error toggling status for courier");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
@@ -435,8 +255,15 @@ router.patch("/:id/status", (req: Request, res: Response) => {
  *       200:
  *         description: Courier deleted
  */
-router.delete("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Courier ${req.params.id} deleted` });
+router.delete("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const { id } = req.params;
+        const courier = await courierService.deleteCourier(id);
+        res.json({ success: true, data: courier, message: `Courier ${id} deleted` });
+    } catch (err: any) {
+        logger.error({ err, courierId: req.params.id }, "Error deleting courier");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
@@ -464,8 +291,15 @@ router.delete("/:id", (req: Request, res: Response) => {
  *                       items:
  *                         $ref: '#/components/schemas/HistoryEntry'
  */
-router.get("/:id/history", (req: Request, res: Response) => {
-    res.json({ success: true, data: [], message: `History for courier ${req.params.id}` });
+router.get("/:id/history", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const { id } = req.params;
+        const history = await courierService.getCourierHistory(id);
+        res.json({ success: true, data: history });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /couriers/:id/history");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
@@ -482,49 +316,133 @@ router.get("/:id/history", (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: Document list
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/SuccessResponse'
- *                 - properties:
- *                     data:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/Document'
- *   post:
- *     summary: Upload a document for a courier
- *     tags: [Couriers]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *               name:
- *                 type: string
- *     responses:
- *       200:
- *         description: Document uploaded
  */
-router.post("/:id/documents", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Document uploaded for courier ${req.params.id}` });
+router.get("/:id/documents", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const { id } = req.params;
+        const docs = await courierService.getDocuments(id);
+        res.json({ success: true, data: docs });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /couriers/:id/documents");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
+
+/* ------------------------------------------------------------------ */
+/*  Zod Schemas                                                        */
+/* ------------------------------------------------------------------ */
+
+const documentMetaSchema = z.object({
+    name: z.string().min(1, "Document name is required"),
+    type: z.string().min(1, "Document type is required"),
+    mime_type: z.string().optional(),
+    file_size_bytes: z.number().optional(),
+});
+
+const complianceSchema = z.object({
+    compliance: z.enum(["compliant", "non-compliant"]),
+});
+
+const passwordSchema = z.object({
+    password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+/**
+ * @swagger
+ * /couriers/{id}/documents:
+ *   post:
+ *     summary: Save document metadata for a courier
+ *     tags: [Couriers]
+ */
+router.post(
+    "/:id/documents",
+    validateUuidParam(),
+    validateBody(documentMetaSchema),
+    async (req: Request<IdParams>, res: Response) => {
+        try {
+            const { id } = req.params;
+            const result = await courierService.addDocumentMeta(id, req.body);
+            res.status(201).json({ success: true, data: result, message: "Document metadata saved" });
+        } catch (err: any) {
+            logger.error({ err }, "Error in POST /couriers/:id/documents");
+            res.status(500).json({ success: false, error: err.message });
+        }
+    },
+);
 
 /**
  * @swagger
  * /couriers/{id}/documents/{docId}:
  *   delete:
  *     summary: Delete a courier document
+ *     tags: [Couriers]
+ */
+router.delete("/:id/documents/:docId", validateUuidParam(), async (req: Request<DocParams>, res: Response) => {
+    try {
+        const { id, docId } = req.params;
+        await courierService.deleteDocumentMeta(id, docId);
+        res.json({ success: true, message: `Document ${docId} deleted` });
+    } catch (err: any) {
+        logger.error({ err }, "Error in DELETE /couriers/:id/documents/:docId");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
+ * @swagger
+ * /couriers/{id}/compliance:
+ *   patch:
+ *     summary: Update courier compliance status
+ *     tags: [Couriers]
+ */
+router.patch(
+    "/:id/compliance",
+    validateUuidParam(),
+    validateBody(complianceSchema),
+    async (req: Request<IdParams>, res: Response) => {
+        try {
+            const { id } = req.params;
+            const courier = await courierService.setCompliance(id, req.body.compliance);
+            res.json({ success: true, data: courier, message: `Compliance updated to ${req.body.compliance}` });
+        } catch (err: any) {
+            logger.error({ err, courierId: req.params.id }, "Error updating compliance");
+            res.status(500).json({ success: false, error: err.message });
+        }
+    },
+);
+
+/**
+ * @swagger
+ * /couriers/{id}/password:
+ *   post:
+ *     summary: Set/reset courier account password
+ *     tags: [Couriers]
+ */
+router.post(
+    "/:id/password",
+    validateUuidParam(),
+    validateBody(passwordSchema),
+    async (req: Request<IdParams>, res: Response) => {
+        try {
+            const { id } = req.params;
+            await courierService.setCourierPassword(id, req.body.password);
+            res.json({ success: true, message: `Password updated for courier ${id}` });
+        } catch (err: any) {
+            logger.error({ err, courierId: req.params.id }, "Error updating password for courier");
+            res.status(500).json({ success: false, error: err.message });
+        }
+    },
+);
+
+/* ------------------------------------------------------------------ */
+/*  Phase 6 — File Upload / Download (stubbed S3)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @swagger
+ * /couriers/{id}/documents/{docId}/upload:
+ *   post:
+ *     summary: Upload a document file (stub — returns hardcoded success)
  *     tags: [Couriers]
  *     parameters:
  *       - in: path
@@ -537,40 +455,55 @@ router.post("/:id/documents", (req: Request, res: Response) => {
  *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Document deleted
+ *         description: File uploaded (stubbed)
  */
-router.delete("/:id/documents/:docId", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Document ${req.params.docId} deleted` });
+router.post("/:id/documents/:docId/upload", validateUuidParam(), async (req: Request<DocParams>, res: Response) => {
+    // Phase 6 stub: Real implementation will use multer + AWS S3 SDK
+    const { id, docId } = req.params;
+    logger.info({ courierId: id, docId }, "Stub: S3 upload called");
+    res.json({
+        success: true,
+        message: "File uploaded successfully (stubbed)",
+        data: {
+            docId,
+            s3_key: `couriers/${id}/docs/${docId}`,
+            url: `https://s3.stub.example.com/couriers/${id}/docs/${docId}`,
+        },
+    });
 });
 
 /**
  * @swagger
- * /couriers/{id}/password:
- *   post:
- *     summary: Set/reset courier account password
+ * /couriers/{id}/documents/{docId}/download:
+ *   get:
+ *     summary: Download a document file (stub — returns hardcoded URL)
  *     tags: [Couriers]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [password]
- *             properties:
- *               password:
- *                 type: string
- *                 format: password
+ *       - in: path
+ *         name: docId
+ *         required: true
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Password updated
+ *         description: Download URL (stubbed)
  */
-router.post("/:id/password", (req: Request, res: Response) => {
-    res.json({ success: true, message: `Password updated for courier ${req.params.id}` });
+router.get("/:id/documents/:docId/download", validateUuidParam(), async (req: Request<DocParams>, res: Response) => {
+    // Phase 6 stub: Real implementation will generate a presigned S3 URL
+    const { id, docId } = req.params;
+    logger.info({ courierId: id, docId }, "Stub: S3 download called");
+    res.json({
+        success: true,
+        data: {
+            url: `https://s3.stub.example.com/couriers/${id}/docs/${docId}?presigned=stub`,
+            expiresIn: 3600,
+        },
+    });
 });
 
 export default router;
+
+

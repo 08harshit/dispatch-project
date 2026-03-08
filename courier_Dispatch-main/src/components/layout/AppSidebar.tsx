@@ -1,23 +1,33 @@
-import { Home, Truck, DollarSign, BarChart3, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { Home, Truck, DollarSign, BarChart3, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, Sparkles, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
   activeItem: string;
-  onItemClick: (item: string) => void;
   collapsed: boolean;
   onToggle: () => void;
   badgeCounts?: Record<string, number>;
 }
 
 const menuItems = [
-  { id: "home", label: "Home", icon: Home, gradient: "from-amber-400 to-amber-500", light: "bg-amber-50", text: "text-amber-600" },
-  { id: "loads", label: "Loads", icon: Truck, gradient: "from-amber-500 to-orange-400", light: "bg-amber-50", text: "text-amber-600" },
-  { id: "accounting", label: "Accounting", icon: DollarSign, gradient: "from-emerald-400 to-teal-400", light: "bg-emerald-50", text: "text-emerald-600" },
-  { id: "communication", label: "Communication", icon: MessageCircle, gradient: "from-sky-400 to-blue-400", light: "bg-sky-50", text: "text-sky-600" },
-  { id: "analytics", label: "Analytics", icon: BarChart3, gradient: "from-teal-400 to-emerald-400", light: "bg-emerald-50", text: "text-emerald-600" },
+  { id: "home", label: "Home", icon: Home, path: "/dashboard", gradient: "from-amber-400 to-amber-500", light: "bg-amber-50", text: "text-amber-600" },
+  { id: "loads", label: "Loads", icon: Truck, path: "/dashboard/loads", gradient: "from-amber-500 to-orange-400", light: "bg-amber-50", text: "text-amber-600" },
+  { id: "saved", label: "Saved Loads", icon: Bookmark, path: "/dashboard/saved", gradient: "from-orange-400 to-rose-400", light: "bg-orange-50", text: "text-orange-600" },
+  { id: "accounting", label: "Accounting", icon: DollarSign, path: "/dashboard/accounting", gradient: "from-emerald-400 to-teal-400", light: "bg-emerald-50", text: "text-emerald-600" },
+  { id: "communication", label: "Communication", icon: MessageCircle, path: "/dashboard/communication", gradient: "from-sky-400 to-blue-400", light: "bg-sky-50", text: "text-sky-600" },
+  { id: "analytics", label: "Analytics", icon: BarChart3, path: "/dashboard/analytics", gradient: "from-teal-400 to-emerald-400", light: "bg-emerald-50", text: "text-emerald-600" },
 ];
 
-export const AppSidebar = ({ activeItem, onItemClick, collapsed, onToggle, badgeCounts = {} }: AppSidebarProps) => {
+export const AppSidebar = ({ activeItem, collapsed, onToggle, badgeCounts = {} }: AppSidebarProps) => {
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/");
+  };
+
   return (
     <aside className={cn(
       "bg-white min-h-screen flex flex-col transition-all duration-500 relative overflow-hidden",
@@ -81,8 +91,9 @@ export const AppSidebar = ({ activeItem, onItemClick, collapsed, onToggle, badge
 
             return (
               <li key={item.id}>
-                <button
-                  onClick={() => onItemClick(item.id)}
+                <NavLink
+                  to={item.path}
+                  end={item.id === "home"}
                   className={cn(
                     "w-full flex items-center gap-3 text-sm py-2.5 px-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
                     collapsed && "justify-center",
@@ -139,7 +150,7 @@ export const AppSidebar = ({ activeItem, onItemClick, collapsed, onToggle, badge
                   {isActive && !collapsed && !badgeCounts[item.id] && (
                     <div className={cn("absolute right-3 w-1.5 h-1.5 rounded-full bg-gradient-to-r animate-pulse", item.gradient)} />
                   )}
-                </button>
+                </NavLink>
               </li>
             );
           })}
@@ -151,8 +162,8 @@ export const AppSidebar = ({ activeItem, onItemClick, collapsed, onToggle, badge
         {/* Decorative divider */}
         <div className="mx-1 mb-2 h-px bg-gradient-to-r from-transparent via-stone-200 to-transparent" />
         
-        <button
-          onClick={() => onItemClick("setup")}
+        <NavLink
+          to="/dashboard/setup"
           className={cn(
             "w-full flex items-center gap-3 text-sm py-2.5 px-3 rounded-xl hover:bg-amber-50 transition-all duration-300 group",
             collapsed && "justify-center"
@@ -162,9 +173,11 @@ export const AppSidebar = ({ activeItem, onItemClick, collapsed, onToggle, badge
             <Settings className="h-4 w-4 text-stone-400 group-hover:text-white group-hover:rotate-90 transition-all duration-500" strokeWidth={2} />
           </div>
           {!collapsed && <span className="font-medium text-stone-500 group-hover:text-amber-600 transition-colors">Settings</span>}
-        </button>
+        </NavLink>
 
         <button
+          type="button"
+          onClick={handleLogout}
           className={cn(
             "w-full flex items-center gap-3 text-sm py-2.5 px-3 rounded-xl hover:bg-emerald-50 transition-all duration-300 group",
             collapsed && "justify-center"

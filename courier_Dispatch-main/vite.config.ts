@@ -26,6 +26,8 @@ export default defineConfig(({ mode }) => {
       hmr: {
         overlay: false,
       },
+      // Set watch: null when DISABLE_WATCH=1 to avoid ENOSPC (file watcher limit) on Linux
+      watch: process.env.DISABLE_WATCH === "1" ? null : undefined,
     },
     define: {
       __APP_BUILD_ID__: JSON.stringify(buildId),

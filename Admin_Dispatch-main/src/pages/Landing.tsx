@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Truck, Package, ArrowLeftRight, Shield, BarChart3, FileCheck,
-  CheckCircle2, ArrowRight, Zap, Globe, Clock, Users
+  CheckCircle2, ArrowRight, Zap, Globe, Clock, Users, TicketCheck, AlertCircle
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const features = [
   {
@@ -67,6 +68,22 @@ export default function Landing() {
             </div>
             <span className="text-xl font-bold text-foreground tracking-tight">Dispatch</span>
           </div>
+          <div className="hidden md:flex items-center gap-1">
+            {[
+              { label: "Features", href: "#features" },
+              { label: "Benefits", href: "#benefits" },
+              { label: "Ticketing", href: "#ticketing" },
+              { label: "Pricing", href: "#cta" },
+            ].map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-muted/50"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
           <div className="flex items-center gap-3">
             <Link to="/auth">
               <Button variant="ghost" size="sm">Sign In</Button>
@@ -125,7 +142,7 @@ export default function Landing() {
       </section>
 
       {/* Features Grid */}
-      <section className="mx-auto max-w-7xl px-6 py-24">
+      <section id="features" className="mx-auto max-w-7xl px-6 py-24 scroll-mt-20">
         <div className="text-center mb-16">
           <h2 className="text-3xl font-bold text-foreground">Everything you need to dispatch smarter</h2>
           <p className="mt-4 text-muted-foreground max-w-xl mx-auto">
@@ -148,7 +165,7 @@ export default function Landing() {
       </section>
 
       {/* Benefits */}
-      <section className="gradient-hero border-y border-border/50">
+      <section id="benefits" className="gradient-hero border-y border-border/50 scroll-mt-20">
         <div className="mx-auto max-w-7xl px-6 py-24">
           <div className="grid gap-12 lg:grid-cols-2 items-center">
             <div>
@@ -191,8 +208,48 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Ticketing System */}
+      <section id="ticketing" className="mx-auto max-w-7xl px-6 py-24 scroll-mt-20">
+        <div className="text-center mb-16">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary">
+            <TicketCheck className="h-3.5 w-3.5" />
+            Built-in Support
+          </div>
+          <h2 className="text-3xl font-bold text-foreground">Integrated Ticketing System</h2>
+          <p className="mt-4 text-muted-foreground max-w-xl mx-auto">
+            Resolve issues faster with a purpose-built ticketing workflow — from open to closed, with full visibility at every step.
+          </p>
+        </div>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { icon: AlertCircle, label: "Open", desc: "New issues reported and awaiting triage", color: "text-orange-500 bg-orange-500/10" },
+            { icon: Clock, label: "In Progress", desc: "Actively being investigated and worked on", color: "text-blue-500 bg-blue-500/10" },
+            { icon: CheckCircle2, label: "Resolved", desc: "Issue fixed and awaiting confirmation", color: "text-accent bg-accent/10" },
+            { icon: Shield, label: "Closed", desc: "Verified complete with full audit trail", color: "text-muted-foreground bg-muted" },
+          ].map((step) => (
+            <Card key={step.label} className={cn("card-hover border-border/50 text-center group")}>
+              <CardContent className="p-6">
+                <div className={cn("mx-auto flex h-12 w-12 items-center justify-center rounded-2xl transition-transform group-hover:scale-110", step.color)}>
+                  <step.icon className="h-6 w-6" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-foreground">{step.label}</h3>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{step.desc}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="mt-12 grid gap-4 sm:grid-cols-3 max-w-3xl mx-auto">
+          {["Priority levels: Low, Medium, High, Urgent", "Internal comments & collaboration", "Real-time status updates & filtering"].map((item) => (
+            <div key={item} className="flex items-center gap-2.5 justify-center">
+              <CheckCircle2 className="h-4 w-4 text-accent shrink-0" />
+              <span className="text-sm text-foreground">{item}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* CTA */}
-      <section className="mx-auto max-w-7xl px-6 py-24">
+      <section id="cta" className="mx-auto max-w-7xl px-6 py-24 scroll-mt-20">
         <Card className="overflow-hidden border-0" style={{ background: "var(--gradient-primary)" }}>
           <CardContent className="p-12 text-center">
             <h2 className="text-3xl font-bold text-primary-foreground">
@@ -213,12 +270,66 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border/50 bg-card">
-        <div className="mx-auto max-w-7xl px-6 py-8 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Truck className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">Dispatch</span>
+        <div className="mx-auto max-w-7xl px-6 py-12">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
+                  <Truck className="h-4 w-4 text-primary-foreground" />
+                </div>
+                <span className="text-lg font-bold text-foreground tracking-tight">Dispatch</span>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                The all-in-one dispatch management platform for auto transport brokers.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">Product</h4>
+              <ul className="space-y-2">
+                {["Features", "Benefits", "Ticketing", "Pricing"].map((item) => (
+                  <li key={item}>
+                    <a href={`#${item.toLowerCase()}`} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      {item}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">Company</h4>
+              <ul className="space-y-2">
+                {["About", "Careers", "Blog", "Contact"].map((item) => (
+                  <li key={item}>
+                    <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      {item}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">Legal</h4>
+              <ul className="space-y-2">
+                {["Privacy Policy", "Terms of Service", "Cookie Policy"].map((item) => (
+                  <li key={item}>
+                    <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      {item}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">© 2026 Dispatch. All rights reserved.</p>
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border/50 pt-8">
+            <p className="text-sm text-muted-foreground">© 2026 Dispatch. All rights reserved.</p>
+            <div className="flex items-center gap-4">
+              {["Twitter", "LinkedIn", "GitHub"].map((social) => (
+                <a key={social} href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  {social}
+                </a>
+              ))}
+            </div>
+          </div>
         </div>
       </footer>
     </div>

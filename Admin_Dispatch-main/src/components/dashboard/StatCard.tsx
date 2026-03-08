@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
 
@@ -12,6 +13,7 @@ interface StatCardProps {
   variant?: "default" | "success" | "warning" | "danger";
   className?: string;
   delay?: number;
+  to?: string;
 }
 
 const variantStyles = {
@@ -35,38 +37,50 @@ const valueVariantStyles = {
   danger: "text-destructive",
 };
 
-export function StatCard({ title, value, icon: Icon, trend, variant = "default", className, delay = 0 }: StatCardProps) {
-  return (
-    <div 
-      className={cn(
-        "stat-card animate-fade-in",
-        variantStyles[variant],
-        className
-      )}
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <div className="relative p-6">
-        <div className="flex items-start justify-between">
-          <div className={cn("stat-icon rounded-2xl p-3", iconVariantStyles[variant])}>
-            <Icon className="h-6 w-6" />
-          </div>
-          {trend && (
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-1 text-xs font-semibold flex items-center gap-1",
-                trend.isPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-              )}
-            >
-              <span className="text-[10px]">{trend.isPositive ? "▲" : "▼"}</span>
-              {Math.abs(trend.value)}%
-            </span>
-          )}
+export function StatCard({ title, value, icon: Icon, trend, variant = "default", className, delay = 0, to }: StatCardProps) {
+  const content = (
+    <div className="relative p-6">
+      <div className="flex items-start justify-between">
+        <div className={cn("stat-icon rounded-2xl p-3", iconVariantStyles[variant])}>
+          <Icon className="h-6 w-6" />
         </div>
-        <div className="mt-4">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
-          <p className={cn("mt-1 text-3xl font-bold", valueVariantStyles[variant])}>{value}</p>
-        </div>
+        {trend && (
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-xs font-semibold flex items-center gap-1",
+              trend.isPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+            )}
+          >
+            <span className="text-[10px]">{trend.isPositive ? "▲" : "▼"}</span>
+            {Math.abs(trend.value)}%
+          </span>
+        )}
       </div>
+      <div className="mt-4">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
+        <p className={cn("mt-1 text-3xl font-bold", valueVariantStyles[variant])}>{value}</p>
+      </div>
+    </div>
+  );
+
+  const wrapperClassName = cn(
+    "stat-card animate-fade-in",
+    variantStyles[variant],
+    to && "cursor-pointer hover:shadow-md transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg",
+    className
+  );
+
+  if (to) {
+    return (
+      <Link to={to} className={cn(wrapperClassName, "block")} style={{ animationDelay: `${delay}ms` }}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div className={wrapperClassName} style={{ animationDelay: `${delay}ms` }}>
+      {content}
     </div>
   );
 }

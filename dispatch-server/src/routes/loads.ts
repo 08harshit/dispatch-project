@@ -1,28 +1,49 @@
+/**
+ * Loads (leads) API. Leads in this DB are created by Admin or via API (e.g. from Shipper app).
+ * If using two Supabase projects (Shipper vs Admin/Courier), sync or duplicate leads as needed.
+ */
 import { Router, Request, Response } from "express";
+import { z } from "zod";
+import { logger } from "../utils/logger";
+import { validateBody, validateUuidParam } from "../utils/validate";
+import * as loadService from "../services/loadService";
+import { resolveShipperId } from "../utils/authHelpers";
+import { supabaseAdmin } from "../config/supabase";
 
 const router = Router();
+type IdParams = { id: string };
+type DocParams = { id: string; docId: string };
+
+function parseFilters(query: Request["query"]) {
+    return {
+        status: query.status === "all" ? undefined : query.status as string | undefined,
+        shipper_id: query.shipper_id as string | undefined,
+        dateFrom: query.dateFrom as string | undefined,
+        dateTo: query.dateTo as string | undefined,
+    };
+}
 
 /**
  * @swagger
  * tags:
  *   name: Loads
- *   description: Vehicle load/shipment management
+ *   description: Loads (leads) management
  */
 
 /**
  * @swagger
  * /loads:
  *   get:
- *     summary: List all loads
+ *     summary: List all loads (leads)
  *     tags: [Loads]
  *     parameters:
  *       - in: query
- *         name: search
- *         schema: { type: string }
- *         description: Search by ID, VIN, vehicle info, shipper, or courier
- *       - in: query
  *         name: status
- *         schema: { type: string, enum: [pending, in-transit, delivered, cancelled] }
+ *         schema: { type: string }
+ *         description: Filter by lead status (e.g. open)
+ *       - in: query
+ *         name: shipper_id
+ *         schema: { type: string, format: uuid }
  *       - in: query
  *         name: dateFrom
  *         schema: { type: string, format: date }
@@ -30,27 +51,26 @@ const router = Router();
  *         name: dateTo
  *         schema: { type: string, format: date }
  *       - in: query
- *         name: sortField
- *         schema: { type: string, enum: [id, vehicleInfo, shipperInfo, pickupDate, dropOffDate, status, courierInfo] }
+ *         name: page
+ *         schema: { type: integer }
  *       - in: query
- *         name: sortDir
- *         schema: { type: string, enum: [asc, desc] }
+ *         name: limit
+ *         schema: { type: integer }
  *     responses:
  *       200:
  *         description: List of loads
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/SuccessResponse'
- *                 - properties:
- *                     data:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/Load'
  */
-router.get("/", (_req: Request, res: Response) => {
-    res.json({ success: true, data: [], message: "List loads" });
+router.get("/", async (req: Request, res: Response) => {
+    try {
+        const filters = parseFilters(req.query);
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        const result = await loadService.listLoads(filters, page, limit);
+        res.json({ success: true, data: result.data, pagination: result.pagination });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /loads");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
@@ -59,197 +79,208 @@ router.get("/", (_req: Request, res: Response) => {
  *   get:
  *     summary: Get load statistics
  *     tags: [Loads]
- *     responses:
- *       200:
- *         description: Load stats
  */
-router.get("/stats", (_req: Request, res: Response) => {
-    res.json({ success: true, data: { total: 0, inTransit: 0, delivered: 0, pending: 0, cancelled: 0, alerts: 0 } });
+router.get("/stats", async (_req: Request, res: Response) => {
+    try {
+        const stats = await loadService.getLoadStats();
+        res.json({ success: true, data: stats });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /loads/stats");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads/{id}:
  *   get:
- *     summary: Get a single load by ID
+ *     summary: Get a single load (lead) by ID
  *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Load details
  */
-router.get("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Get load ${req.params.id}` });
+router.get("/:id", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const load = await loadService.getLoadById(req.params.id);
+        if (!load) {
+            return res.status(404).json({ success: false, error: "Load not found" });
+        }
+        res.json({ success: true, data: load });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads:
  *   post:
- *     summary: Create a new load (vehicle shipment)
- *     tags: [Loads]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [vehicleYear, vehicleMake, vehicleModel, vin, shipperInfo, courierInfo, pickupDate, dropOffDate]
- *             properties:
- *               vehicleYear: { type: string, example: "2024" }
- *               vehicleMake: { type: string, example: "Toyota" }
- *               vehicleModel: { type: string, example: "Camry" }
- *               vin: { type: string, example: "1HGBH41JXMN109186" }
- *               stockNumber: { type: string }
- *               shipperInfo: { type: string }
- *               courierInfo: { type: string }
- *               pickupDate: { type: string, format: date }
- *               dropOffDate: { type: string, format: date }
- *     responses:
- *       200:
- *         description: Load created
+ *      summary: Create a load
+ *      tags: [Loads]
  */
-router.post("/", (_req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: "Load created" });
+const createLoadSchema = z.object({
+    listing_id: z.string().min(1),
+    shipper_id: z.string().uuid().nullable().optional(),
+    pickup_address: z.string().min(1),
+    delivery_address: z.string().min(1),
+    pickup_location_type: z.string().optional(),
+    pickup_contact_name: z.string().optional(),
+    pickup_contact_phone: z.string().optional(),
+    pickup_contact_email: z.string().optional(),
+    delivery_location_type: z.string().optional(),
+    delivery_contact_name: z.string().optional(),
+    delivery_contact_phone: z.string().optional(),
+    delivery_contact_email: z.string().optional(),
+    vehicle_year: z.string().optional(),
+    vehicle_make: z.string().optional(),
+    vehicle_model: z.string().optional(),
+    vehicle_vin: z.string().optional(),
+    vehicle_type: z.string().optional(),
+    vehicle_color: z.string().optional(),
+    vehicle_runs: z.boolean().optional(),
+    vehicle_rolls: z.boolean().optional(),
+    initial_price: z.number().optional(),
+    payment_type: z.string().optional(),
+    notes: z.string().optional(),
+});
+router.post("/", validateBody(createLoadSchema), async (req: Request, res: Response) => {
+    try {
+        const payload = req.body;
+        let shipper_id = payload.shipper_id;
+        if (!shipper_id && req.user?.id) {
+            shipper_id = (await resolveShipperId(supabaseAdmin, req.user.id)) || undefined;
+        }
+        const load = await loadService.createLoad({ ...payload, shipper_id: shipper_id ?? null, status: "open" });
+        res.status(201).json({ success: true, data: load });
+    } catch (err: any) {
+        logger.error({ err }, "Error in POST /loads");
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads/{id}:
  *   put:
- *     summary: Update a load
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Load'
- *     responses:
- *       200:
- *         description: Load updated
+ *      summary: Update a load
+ *      tags: [Loads]
  */
-router.put("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Load ${req.params.id} updated` });
+const updateLoadSchema = z.object({
+    pickup_address: z.string().optional(),
+    delivery_address: z.string().optional(),
+    vehicle_year: z.string().optional(),
+    vehicle_make: z.string().optional(),
+    vehicle_model: z.string().optional(),
+    vehicle_vin: z.string().optional(),
+    vehicle_type: z.string().optional(),
+    vehicle_color: z.string().optional(),
+    initial_price: z.number().optional(),
+    payment_type: z.string().optional(),
+    notes: z.string().optional(),
+    status: z.string().optional(),
+});
+router.put("/:id", validateUuidParam("id"), validateBody(updateLoadSchema), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const updates = req.body;
+        if (Object.keys(updates).length === 0) {
+            const row = await loadService.getLoadById(req.params.id);
+            return res.json({ success: true, data: row });
+        }
+        const load = await loadService.updateLoad(req.params.id, updates);
+        res.json({ success: true, data: load });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads/{id}/status:
  *   patch:
- *     summary: Update load status
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [pending, in-transit, delivered, cancelled]
- *     responses:
- *       200:
- *         description: Status updated
+ *      summary: Update a load status
+ *      tags: [Loads]
  */
-router.patch("/:id/status", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Load ${req.params.id} status updated` });
+const updateStatusSchema = z.object({
+    status: z.string().min(1)
+});
+router.patch("/:id/status", validateUuidParam("id"), validateBody(updateStatusSchema), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const load = await loadService.updateLoadStatus(req.params.id, req.body.status);
+        res.json({ success: true, data: load });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads/{id}:
  *   delete:
- *     summary: Delete a load
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Load deleted
+ *      summary: Soft deletes a load (changes status to cancelled)
+ *      tags: [Loads]
  */
-router.delete("/:id", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Load ${req.params.id} deleted` });
+router.delete("/:id", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const load = await loadService.deleteLoad(req.params.id);
+        res.json({ success: true, data: load, message: "Load cancelled" });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads/{id}/history:
  *   get:
- *     summary: Get load history timeline
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: History timeline
+ *     summary: Get history events for a load
+ *     tags: [Loads, History]
  */
-router.get("/:id/history", (req: Request, res: Response) => {
-    res.json({ success: true, data: [], message: `History for load ${req.params.id}` });
+router.get("/:id/history", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const history = await loadService.getLoadHistory(req.params.id);
+        res.json({ success: true, data: history });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
  * @swagger
  * /loads/{id}/documents:
  *   get:
- *     summary: Get load documents (BOL, inspection reports, etc.)
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Document list
- *   post:
- *     summary: Upload a document for a load
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *               name:
- *                 type: string
- *     responses:
- *       200:
- *         description: Document uploaded
+ *     summary: Get load documents
+ *     tags: [Loads, Documents]
  */
-router.post("/:id/documents", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Document uploaded for load ${req.params.id}` });
+router.get("/:id/documents", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const documents = await loadService.getLoadDocuments(req.params.id);
+        res.json({ success: true, data: documents });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
+ * @swagger
+ * /loads/{id}/documents:
+ *   post:
+ *     summary: Upload (stub) a load document
+ *     tags: [Loads, Documents]
+ */
+const uploadDocSchema = z.object({
+    name: z.string().min(1),
+    type: z.string().min(1),
+});
+router.post("/:id/documents", validateUuidParam("id"), validateBody(uploadDocSchema), async (req: Request<IdParams>, res: Response) => {
+    try {
+        // Just meta stub like Courier
+        const doc = await loadService.addLoadDocumentMeta(req.params.id, req.body.name, req.body.type);
+        res.json({
+            success: true,
+            data: doc,
+            message: "Document metadata processed. File upload to S3 pending Phase 6"
+        });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
@@ -257,22 +288,15 @@ router.post("/:id/documents", (req: Request, res: Response) => {
  * /loads/{id}/documents/{docId}:
  *   delete:
  *     summary: Delete a load document
- *     tags: [Loads]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *       - in: path
- *         name: docId
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Document deleted
+ *     tags: [Loads, Documents]
  */
-router.delete("/:id/documents/:docId", (req: Request, res: Response) => {
-    res.json({ success: true, data: null, message: `Document ${req.params.docId} deleted` });
+router.delete("/:id/documents/:docId", validateUuidParam("id"), validateUuidParam("docId"), async (req: Request<DocParams>, res: Response) => {
+    try {
+        await loadService.removeLoadDocument(req.params.id, req.params.docId);
+        res.json({ success: true, message: "Document deleted" });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 export default router;
