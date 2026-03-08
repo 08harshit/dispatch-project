@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { z, ZodSchema } from "zod";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const uuidParam = z.string().regex(UUID_REGEX, "Invalid UUID");
 
@@ -13,8 +13,8 @@ export function validateBody<T>(schema: ZodSchema<T>) {
         const result = schema.safeParse(req.body);
         if (!result.success) {
             const messages = result.error.issues.map(
-            (e) => `${e.path.join(".") || "body"}: ${e.message}`
-        );
+                (e) => `${e.path.join(".") || "body"}: ${e.message}`
+            );
             return res.status(400).json({
                 success: false,
                 error: messages.join("; "),
@@ -30,7 +30,7 @@ export function validateBody<T>(schema: ZodSchema<T>) {
  */
 export function validateUuidParam(paramName = "id") {
     return (req: Request, res: Response, next: NextFunction) => {
-        const id = req.params[paramName];
+        const id = req.params[paramName]; console.log("Validating UUID:", { paramName, id });
         if (!id || !uuidParam.safeParse(id).success) {
             return res.status(400).json({
                 success: false,

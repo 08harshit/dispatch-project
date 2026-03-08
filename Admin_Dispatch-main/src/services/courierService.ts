@@ -84,17 +84,18 @@ export async function fetchCourierStats(): Promise<CourierStats> {
     return res.data;
 }
 
-export async function createCourier(formData: Record<string, string>): Promise<{ id: string }> {
-    const res = await apiPost<{ id: string }>("/couriers", formData);
+export async function createCourier(formData: Record<string, string>): Promise<CourierListItem> {
+    const res = await apiPost<CourierListItem>("/couriers", formData);
     return res.data;
 }
 
-export async function updateCourier(id: string, formData: Record<string, string>): Promise<void> {
-    await apiPut<void>(`/couriers/${id}`, formData);
+export async function updateCourier(id: string, formData: Record<string, string>): Promise<CourierListItem> {
+    const res = await apiPut<CourierListItem>(`/couriers/${id}`, formData);
+    return res.data;
 }
 
-export async function toggleCourierStatus(id: string): Promise<{ status: string }> {
-    const res = await apiPatch<{ status: string }>(`/couriers/${id}/status`);
+export async function toggleCourierStatus(id: string): Promise<CourierListItem> {
+    const res = await apiPatch<CourierListItem>(`/couriers/${id}/status`);
     return res.data;
 }
 
@@ -111,8 +112,9 @@ export async function setCourierPassword(id: string, password: string): Promise<
 export async function updateCourierCompliance(
     id: string,
     compliance: "compliant" | "non-compliant",
-): Promise<void> {
-    await apiPatch<void>(`/couriers/${id}/compliance`, { compliance });
+): Promise<CourierListItem> {
+    const res = await apiPatch<CourierListItem>(`/couriers/${id}/compliance`, { compliance });
+    return res.data;
 }
 
 // --- Phase 1: Document Metadata ---

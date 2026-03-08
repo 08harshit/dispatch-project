@@ -30,9 +30,9 @@ type DocParams = { id: string; docId: string };
 function parseFilters(query: Request["query"]) {
     return {
         search: query.search as string | undefined,
-        compliance: query.compliance as string | undefined,
-        status: query.status as string | undefined,
-        equipmentType: query.equipmentType as string | undefined,
+        compliance: query.compliance === "all" ? undefined : query.compliance as string | undefined,
+        status: query.status === "all" ? undefined : query.status as string | undefined,
+        equipmentType: query.equipmentType === "all" ? undefined : query.equipmentType as string | undefined,
         isNew: query.isNew as string | undefined,
     };
 }

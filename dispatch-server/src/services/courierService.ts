@@ -145,22 +145,22 @@ export async function getCourier(id: string) {
     return result.data;
 }
 
-/** Fetch a single courier as CourierListItem (includes related data). Used for create/update/delete responses. */
-export async function getCourierListItem(id: string): Promise<CourierListItem | null> {
-    const result = await courierRepo.findById(id);
-    if (result.error || !result.data) return null;
-
-    const c = result.data;
-    const courierIds = [c.id];
+/** Helper to fetch a fully populated CourierListItem for mutation responses (Zero-GET strategy) */
+export async function getFullCourier(id: string): Promise<CourierListItem> {
+    const coreResult = await courierRepo.findById(id);
+    if (coreResult.error || !coreResult.data) {
+        throw new Error(coreResult.error || "Courier not found");
+    }
+    const c = coreResult.data;
 
     const [trucksMap, insuranceMap, historyMap, docsMap] = await Promise.all([
-        courierRepo.findTrucksByCourierIds(courierIds),
-        courierRepo.findInsuranceByCourierIds(courierIds),
-        historyRepo.findByCourierIds(courierIds),
-        documentRepo.findByCourierIds(courierIds),
+        courierRepo.findTrucksByCourierIds([id]),
+        courierRepo.findInsuranceByCourierIds([id]),
+        historyRepo.findByCourierIds([id]),
+        documentRepo.findByCourierIds([id]),
     ]);
 
-    const trucks = trucksMap.get(c.id) || [];
+    const trucks = trucksMap.get(id) || [];
     const totalTrucks = trucks.reduce((sum, t) => sum + (t.count || 0), 0);
     const equipmentTypes = trucks.map(t => t.equipment_type).filter(Boolean);
 
@@ -175,11 +175,11 @@ export async function getCourierListItem(id: string): Promise<CourierListItem | 
         mc: c.mc || "",
         status: c.status || "active",
         trucks: totalTrucks,
-        insuranceCompany: insuranceMap.get(c.id) || "",
+        insuranceCompany: insuranceMap.get(id) || "",
         equipmentType: equipmentTypes.join(", ") || "",
         isNew: c.is_new || false,
-        history: historyMap.get(c.id) || [],
-        documents: docsMap.get(c.id) || [],
+        history: historyMap.get(id) || [],
+        documents: docsMap.get(id) || [],
     };
     if (c.deleted_at) item.deletedAt = c.deleted_at;
     return item;
@@ -286,9 +286,7 @@ export async function createCourier(body: CourierFormBody): Promise<CourierListI
 
     await Promise.all(relatedOps);
 
-    const item = await getCourierListItem(courierId);
-    if (!item) throw new Error("Failed to fetch created courier");
-    return item;
+    return getFullCourier(courierId);
 }
 
 /* ------------------------------------------------------------------ */
@@ -374,9 +372,7 @@ export async function updateCourier(id: string, body: CourierFormBody): Promise<
 
     await Promise.all(relatedOps);
 
-    const item = await getCourierListItem(id);
-    if (!item) throw new Error("Failed to fetch updated courier");
-    return item;
+    return getFullCourier(id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -390,9 +386,7 @@ export async function toggleStatus(id: string): Promise<CourierListItem> {
     const newStatus = result.data!.status;
     await historyRepo.addEntry(id, `Status changed to ${newStatus}`);
 
-    const item = await getCourierListItem(id);
-    if (!item) throw new Error("Failed to fetch courier after status toggle");
-    return item;
+    return getFullCourier(id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -405,8 +399,7 @@ export async function deleteCourier(id: string): Promise<CourierListItem> {
     if (result.error) throw new Error(result.error);
     await historyRepo.addEntry(id, "Account soft-deleted by Admin");
 
-    const item = await getCourierListItem(id);
-    if (!item) throw new Error("Failed to fetch courier after soft delete");
+    const item = await getFullCourier(id);
     return item;
 }
 
@@ -464,9 +457,7 @@ export async function setCompliance(
     if (result.error) throw new Error(result.error);
     await historyRepo.addEntry(id, `Compliance changed to ${compliance}`);
 
-    const item = await getCourierListItem(id);
-    if (!item) throw new Error("Failed to fetch courier after compliance update");
-    return item;
+    return getFullCourier(id);
 }
 
 /* ------------------------------------------------------------------ */

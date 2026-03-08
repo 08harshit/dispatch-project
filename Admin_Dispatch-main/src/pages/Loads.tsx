@@ -1,7 +1,15 @@
 import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getLoadStatusConfig } from "@/utils/styleHelpers";
-import { Load, fetchLoads, fetchLoadStats, createLoad, updateLoad, deleteLoad, type CreateLoadPayload } from "@/services/loadService";
+import { Load, type CreateLoadPayload } from "@/services/loadService";
 import { fetchShippers } from "@/services/shipperService";
+import {
+  useLoadsQuery,
+  useLoadStatsQuery,
+  useCreateLoadMutation,
+  useUpdateLoadMutation,
+  useDeleteLoadMutation
+} from "@/hooks/queries/useLoads";
 import { useDialogManager } from "@/hooks/useDialogManager";
 import { useTableSort } from "@/hooks/useTableSort";
 import { StatsGrid } from "@/components/common/StatsGrid";
@@ -84,19 +92,15 @@ type SortField = "id" | "vehicleInfo" | "shipperInfo" | "pickupDate" | "dropOffD
 type SortDir = "asc" | "desc";
 
 export default function Loads() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") || "all");
+  const [dateFrom, setDateFrom] = useState(searchParams.get("dateFrom") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("dateTo") || "");
   const { sortField, sortDir, toggleSort } = useTableSort<SortField>("id");
   const dialogs = useDialogManager<Load>();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [loads, setLoads] = useState<Load[]>([]);
-  const [stats, setStats] = useState({ total: 0, inTransit: 0, delivered: 0, pending: 0, cancelled: 0, alerts: 0 });
-  const [loading, setLoading] = useState(true);
-  const [createLoadSubmitting, setCreateLoadSubmitting] = useState(false);
-  const [editSubmitting, setEditSubmitting] = useState(false);
-  const [deleteSubmitting, setDeleteSubmitting] = useState<string | null>(null);
+  const [deleteSubmittingId, setDeleteSubmittingId] = useState<string | null>(null);
   const [shippers, setShippers] = useState<{ id: string; name: string }[]>([]);
   const [newLoad, setNewLoad] = useState({
     listing_id: "",
@@ -114,18 +118,38 @@ export default function Loads() {
     notes: "",
   });
 
-  useEffect(() => {
-    setLoading(true);
-    const statusParam = statusFilter !== "all" ? statusFilter : undefined;
-    fetchLoads({ status: statusParam, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
-      .then((res) => setLoads(res.data))
-      .catch(() => setLoads([]))
-      .finally(() => setLoading(false));
-  }, [statusFilter, dateFrom, dateTo]);
+  const filters = useMemo(() => ({
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  }), [statusFilter, dateFrom, dateTo]);
+
+  const { data: loadsRes, isLoading: loading } = useLoadsQuery(filters);
+  const loads = loadsRes?.data || [];
+  const { data: statsData } = useLoadStatsQuery();
+  const stats = statsData || { total: 0, inTransit: 0, delivered: 0, pending: 0, cancelled: 0, alerts: 0 };
+
+  const { mutateAsync: createLoadMutation, isPending: createLoadSubmitting } = useCreateLoadMutation();
+  const { mutateAsync: updateLoadMutation, isPending: editSubmitting } = useUpdateLoadMutation();
+  const { mutateAsync: deleteLoadMutation } = useDeleteLoadMutation();
 
   useEffect(() => {
-    fetchLoadStats().then(setStats).catch(() => { });
-  }, []);
+    const params = new URLSearchParams(searchParams);
+
+    if (statusFilter === "all") params.delete("status");
+    else params.set("status", statusFilter);
+
+    if (!dateFrom) params.delete("dateFrom");
+    else params.set("dateFrom", dateFrom);
+
+    if (!dateTo) params.delete("dateTo");
+    else params.set("dateTo", dateTo);
+
+    if (!searchQuery) params.delete("search");
+    else params.set("search", searchQuery);
+
+    setSearchParams(params, { replace: true });
+  }, [statusFilter, dateFrom, dateTo, searchQuery, setSearchParams, searchParams]);
 
   useEffect(() => {
     if (addDialogOpen) {
@@ -398,19 +422,17 @@ export default function Loads() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-destructive"
-                              disabled={deleteSubmitting === load.id}
+                              disabled={deleteSubmittingId === load.id}
                               onClick={async () => {
                                 if (!confirm("Cancel this load?")) return;
-                                setDeleteSubmitting(load.id);
+                                setDeleteSubmittingId(load.id);
                                 try {
-                                  await deleteLoad(load.id);
+                                  await deleteLoadMutation(load.id);
                                   toast.success("Load cancelled");
-                                  setLoads((prev) => prev.filter((l) => l.id !== load.id));
-                                  fetchLoadStats().then(setStats).catch(() => { });
                                 } catch (err) {
                                   toast.error(err instanceof Error ? err.message : "Failed to cancel load");
                                 } finally {
-                                  setDeleteSubmitting(null);
+                                  setDeleteSubmittingId(null);
                                 }
                               }}
                             >
@@ -471,35 +493,27 @@ export default function Loads() {
                   const sel = dialogs.selected!;
                   const form = e.currentTarget;
                   const get = (name: string) => (form.querySelector(`[name="${name}"]`) as HTMLInputElement)?.value ?? "";
-                  setEditSubmitting(true);
                   try {
-                    await updateLoad(sel.id, {
-                      pickup_address: get("pickup_address") || undefined,
-                      delivery_address: get("delivery_address") || undefined,
-                      vehicle_year: get("vehicle_year") || undefined,
-                      vehicle_make: get("vehicle_make") || undefined,
-                      vehicle_model: get("vehicle_model") || undefined,
-                      vehicle_vin: get("vehicle_vin") || undefined,
-                      vehicle_type: get("vehicle_type") || undefined,
-                      vehicle_color: get("vehicle_color") || undefined,
-                      initial_price: get("initial_price") ? Number(get("initial_price")) : undefined,
-                      payment_type: get("payment_type") || undefined,
-                      notes: get("notes") || undefined,
+                    await updateLoadMutation({
+                      id: sel.id,
+                      data: {
+                        pickup_address: get("pickup_address") || undefined,
+                        delivery_address: get("delivery_address") || undefined,
+                        vehicle_year: get("vehicle_year") || undefined,
+                        vehicle_make: get("vehicle_make") || undefined,
+                        vehicle_model: get("vehicle_model") || undefined,
+                        vehicle_vin: get("vehicle_vin") || undefined,
+                        vehicle_type: get("vehicle_type") || undefined,
+                        vehicle_color: get("vehicle_color") || undefined,
+                        initial_price: get("initial_price") ? Number(get("initial_price")) : undefined,
+                        payment_type: get("payment_type") || undefined,
+                        notes: get("notes") || undefined,
+                      }
                     });
                     toast.success("Load updated");
                     dialogs.setOpen("edit", false);
-                    setLoading(true);
-                    const [nextLoadsResponse, nextStats] = await Promise.all([
-                      fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
-                      fetchLoadStats(),
-                    ]);
-                    setLoads(nextLoadsResponse.data);
-                    setStats(nextStats);
                   } catch (err) {
                     toast.error(err instanceof Error ? err.message : "Failed to update load");
-                  } finally {
-                    setEditSubmitting(false);
-                    setLoading(false);
                   }
                 }}
                 className="space-y-4"
@@ -590,7 +604,6 @@ export default function Loads() {
                   toast.error("Please fill in listing ID, shipper, pickup address, and delivery address");
                   return;
                 }
-                setCreateLoadSubmitting(true);
                 try {
                   const payload: CreateLoadPayload = {
                     listing_id: newLoad.listing_id.trim(),
@@ -607,19 +620,12 @@ export default function Loads() {
                   if (newLoad.initial_price) payload.initial_price = Number(newLoad.initial_price);
                   if (newLoad.payment_type) payload.payment_type = newLoad.payment_type;
                   if (newLoad.notes) payload.notes = newLoad.notes;
-                  await createLoad(payload);
+                  await createLoadMutation(payload);
                   setNewLoad({ listing_id: "", shipper_id: "", pickup_address: "", delivery_address: "", vehicle_year: "", vehicle_make: "", vehicle_model: "", vehicle_vin: "", vehicle_type: "", vehicle_color: "", initial_price: "", payment_type: "", notes: "" });
                   setAddDialogOpen(false);
                   toast.success("Load created successfully");
-                  setLoading(true);
-                  const [nextLoadsResponse, nextStats] = await Promise.all([fetchLoads({ status: statusFilter !== "all" ? statusFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }), fetchLoadStats()]);
-                  setLoads(nextLoadsResponse.data);
-                  setStats(nextStats);
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : "Failed to create load");
-                } finally {
-                  setCreateLoadSubmitting(false);
-                  setLoading(false);
                 }
               }}
               className="space-y-4"

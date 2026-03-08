@@ -14,7 +14,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Building2, User, FileText, Clock, FileUp } from "lucide-react";
-import { createShipper, updateShipper, type CreateShipperPayload } from "@/services/shipperService";
+import { type CreateShipperPayload } from "@/services/shipperService";
+import { useCreateShipperMutation, useUpdateShipperMutation } from "@/hooks/queries/useShippers";
 import { AddressAutocomplete } from "@/components/forms/AddressAutocomplete";
 
 export interface ShipperFormData {
@@ -62,6 +63,9 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mailingSameAsBusiness, setMailingSameAsBusiness] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+
+  const { mutateAsync: createShipper } = useCreateShipperMutation();
+  const { mutateAsync: updateShipper } = useUpdateShipperMutation();
   const [formData, setFormData] = useState<ShipperFormData>({
     businessName: "",
     businessType: "",
@@ -173,7 +177,7 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
         principal_name: formData.principalName || undefined,
       };
       if (isEditing && initialData?.id) {
-        await updateShipper(initialData.id, payload);
+        await updateShipper({ id: initialData.id, data: payload });
         toast.success("Shipper updated successfully!");
       } else {
         await createShipper(payload);
@@ -220,7 +224,7 @@ export function AddShipperForm({ onSuccess, initialData, isEditing = false }: Ad
               <Label htmlFor="businessName">Business Name *</Label>
               <Input id="businessName" placeholder="Enter business name" required value={formData.businessName} onChange={(e) => updateField("businessName", e.target.value)} />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="businessType">Business Type *</Label>
               <Select value={formData.businessType} onValueChange={(value) => updateField("businessType", value)}>

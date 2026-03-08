@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
-import { Transaction, AccountingStats, fetchTransactions, fetchAccountingStats } from "@/services/accountingService";
+import { useSearchParams } from "react-router-dom";
+import { Transaction, AccountingStats } from "@/services/accountingService";
+import { useTransactionsQuery, useAccountingStatsQuery } from "@/hooks/queries/useAccounting";
 import { fetchInvoice } from "@/services/invoiceService";
 import { downloadInvoiceAsHtml } from "@/utils/generateInvoiceHtml";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -63,18 +65,38 @@ const getStatusConfig = (status: string) => {
 };
 
 export default function Accounting() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [stats, setStats] = useState<AccountingStats[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") || "all");
+  const [typeFilter, setTypeFilter] = useState<string>(searchParams.get("type") || "all");
+  const [dateFrom, setDateFrom] = useState(searchParams.get("dateFrom") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("dateTo") || "");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+
+  const { data: transactionsData } = useTransactionsQuery();
+  const transactions = transactionsData || [];
+  const { data: statsData } = useAccountingStatsQuery();
+  const stats = statsData || [];
 
   useEffect(() => {
-    fetchTransactions().then(setTransactions);
-    fetchAccountingStats().then(setStats);
-  }, []);
+    const params = new URLSearchParams(searchParams);
+
+    if (statusFilter === "all") params.delete("status");
+    else params.set("status", statusFilter);
+
+    if (typeFilter === "all") params.delete("type");
+    else params.set("type", typeFilter);
+
+    if (!dateFrom) params.delete("dateFrom");
+    else params.set("dateFrom", dateFrom);
+
+    if (!dateTo) params.delete("dateTo");
+    else params.set("dateTo", dateTo);
+
+    if (!searchQuery) params.delete("search");
+    else params.set("search", searchQuery);
+
+    setSearchParams(params, { replace: true });
+  }, [statusFilter, typeFilter, dateFrom, dateTo, searchQuery, setSearchParams, searchParams]);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {

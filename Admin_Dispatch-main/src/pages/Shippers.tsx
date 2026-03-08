@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { StatsGrid } from "@/components/common/StatsGrid";
 import { HistoryDialog } from "@/components/common/HistoryDialog";
@@ -57,7 +57,16 @@ import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddShipperForm, ShipperFormData } from "@/components/forms/AddShipperForm";
 import { toast } from "sonner";
-import { Shipper, ShipperStats, ShipperFilters, fetchShippers, fetchShipperStats, updateShipperStatus, updateShipperCompliance, deleteShipper, addShipperDocument, deleteShipperDocument } from "@/services/shipperService";
+import { Shipper } from "@/services/shipperService";
+import {
+  useShippersQuery,
+  useShipperStatsQuery,
+  useToggleShipperStatusMutation,
+  useUpdateShipperComplianceMutation,
+  useDeleteShipperMutation,
+  useAddShipperDocumentMutation,
+  useDeleteShipperDocumentMutation
+} from "@/hooks/queries/useShippers";
 import type { FilterTab } from "@/types/common";
 import { useTableSort } from "@/hooks/useTableSort";
 
@@ -67,29 +76,53 @@ export default function Shippers() {
   const { shipperId: paramShipperId } = useParams();
   const [searchParams] = useSearchParams();
   const highlightShipperId = paramShipperId ?? searchParams.get("shipper_id") ?? undefined;
-  const [shippers, setShippers] = useState<Shipper[]>([]);
-  const [stats, setStats] = useState<ShipperStats>({ total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<FilterTab>("all");
-  const [businessTypeFilter, setBusinessTypeFilter] = useState<string>("all");
-  const [stateFilter, setStateFilter] = useState<string>("all");
+
+  const [activeTab, setActiveTab] = useState<FilterTab>(
+    (searchParams.get("compliance") as FilterTab) || "all"
+  );
+  const [businessTypeFilter, setBusinessTypeFilter] = useState<string>(
+    searchParams.get("businessType") || "all"
+  );
+  const [stateFilter, setStateFilter] = useState<string>(
+    searchParams.get("state") || "all"
+  );
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Shipper | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [highlightFaded, setHighlightFaded] = useState(false);
+  const highlightCardRef = useRef<HTMLDivElement | null>(null);
 
   const dialogs = useDialogManager<Shipper>();
   const { sortField, sortDir, toggleSort } = useTableSort<SortKey>("id", "asc");
 
+  // Synchronize URL search params with state filters (and active tab)
   useEffect(() => {
-    const compliance = searchParams.get("compliance");
-    if (compliance === "compliant" || compliance === "non-compliant") {
-      setActiveTab(compliance);
+    const params = new URLSearchParams(searchParams);
+
+    if (activeTab === "all" || activeTab === "new") {
+      params.delete("compliance");
+    } else {
+      params.set("compliance", activeTab);
     }
-  }, [searchParams]);
+
+    if (activeTab === "new") params.set("isNew", "true");
+    else params.delete("isNew");
+
+    if (businessTypeFilter === "all") params.delete("businessType");
+    else params.set("businessType", businessTypeFilter);
+
+    if (stateFilter === "all") params.delete("state");
+    else params.set("state", stateFilter);
+
+    if (!searchTerm) params.delete("search");
+    else params.set("search", searchTerm);
+
+    // Replace the URL seamlessly without reloading
+    window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+  }, [activeTab, businessTypeFilter, stateFilter, searchTerm, searchParams]);
 
   useEffect(() => {
     if (highlightShipperId) {
@@ -99,38 +132,20 @@ export default function Shippers() {
     }
   }, [highlightShipperId]);
 
-  const buildFilters = useCallback((): ShipperFilters => {
-    const filters: ShipperFilters = {};
-    if (activeTab === "compliant") filters.compliance = "compliant";
-    if (activeTab === "non-compliant") filters.compliance = "non-compliant";
-    if (activeTab === "new") filters.isNew = true;
-    if (businessTypeFilter !== "all") filters.businessType = businessTypeFilter;
-    if (stateFilter !== "all") filters.state = stateFilter;
-    return filters;
+  const filters = useMemo(() => {
+    return {
+      compliance: activeTab === "compliant" || activeTab === "non-compliant" ? activeTab : undefined,
+      isNew: activeTab === "new" ? true : undefined,
+      businessType: businessTypeFilter !== "all" ? businessTypeFilter : undefined,
+      state: stateFilter !== "all" ? stateFilter : undefined,
+    };
   }, [activeTab, businessTypeFilter, stateFilter]);
 
-  const loadShippers = useCallback(async (): Promise<Shipper[]> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [shippersData, statsData] = await Promise.all([
-        fetchShippers(buildFilters()),
-        fetchShipperStats(),
-      ]);
-      setShippers(shippersData);
-      setStats(statsData);
-      return shippersData;
-    } catch (e) {
-      setError(e?.message || "Failed to load shippers");
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [buildFilters]);
+  // Use React Query for fetching
+  const { data: shippers = [], isLoading: loading, error } = useShippersQuery(filters);
+  const { data: statsData } = useShipperStatsQuery();
 
-  useEffect(() => {
-    loadShippers();
-  }, [loadShippers]);
+  const stats = statsData || { total: 0, compliant: 0, nonCompliant: 0, new: 0, alerts: 0 };
 
   const filteredShippers = shippers.filter((shipper) => {
     if (!searchTerm) return true;
@@ -198,12 +213,17 @@ export default function Shippers() {
     setCurrentPage(1);
   }, [searchTerm, activeTab, businessTypeFilter, stateFilter]);
 
+  const { mutateAsync: toggleStatus } = useToggleShipperStatusMutation();
+  const { mutateAsync: updateCompliance } = useUpdateShipperComplianceMutation();
+  const { mutateAsync: deleteShipperMutation, isPending: deleting } = useDeleteShipperMutation();
+  const { mutateAsync: addDocument } = useAddShipperDocumentMutation();
+  const { mutateAsync: deleteDocument } = useDeleteShipperDocumentMutation();
+
   const handleToggleStatus = async (shipper: Shipper) => {
     const newStatus = shipper.status === "active" ? "inactive" : "active";
     try {
-      await updateShipperStatus(shipper.id, newStatus);
+      await toggleStatus({ id: shipper.id, status: newStatus });
       toast.success(`${shipper.name} ${newStatus === "active" ? "activated" : "deactivated"}`);
-      loadShippers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update status");
     }
@@ -212,9 +232,8 @@ export default function Shippers() {
   const handleToggleCompliance = async (shipper: Shipper) => {
     const newCompliance = shipper.compliance === "compliant" ? "non-compliant" : "compliant";
     try {
-      await updateShipperCompliance(shipper.id, newCompliance);
+      await updateCompliance({ id: shipper.id, compliance: newCompliance });
       toast.success(`${shipper.name} compliance updated to ${newCompliance}`);
-      loadShippers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update compliance");
     }
@@ -223,9 +242,8 @@ export default function Shippers() {
   const handleEditComplianceChange = async (newCompliance: "compliant" | "non-compliant") => {
     if (!dialogs.selected || dialogs.selected.compliance === newCompliance) return;
     try {
-      await updateShipperCompliance(dialogs.selected.id, newCompliance);
+      await updateCompliance({ id: dialogs.selected.id, compliance: newCompliance });
       toast.success(`${dialogs.selected.name} compliance updated`);
-      loadShippers();
       dialogs.setSelected({ ...dialogs.selected, compliance: newCompliance });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update compliance");
@@ -234,16 +252,12 @@ export default function Shippers() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
-    setDeleting(true);
     try {
-      await deleteShipper(deleteTarget.id);
+      await deleteShipperMutation(deleteTarget.id);
       toast.success(`${deleteTarget.name} deleted`);
       setDeleteTarget(null);
-      loadShippers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete shipper");
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -287,7 +301,7 @@ export default function Shippers() {
               <DialogHeader>
                 <DialogTitle>Add New Shipper</DialogTitle>
               </DialogHeader>
-              <AddShipperForm onSuccess={() => { setIsAddDialogOpen(false); loadShippers(); }} />
+              <AddShipperForm onSuccess={() => { setIsAddDialogOpen(false); }} />
             </DialogContent>
           </Dialog>
         </div>
@@ -409,16 +423,16 @@ export default function Shippers() {
 
           <CardContent className="p-0">
             {loading ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-                  <p className="text-xl font-bold text-foreground">Loading Shippers...</p>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-xs">Fetching data from the server</p>
-                </div>
-              ) : error ? (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive m-4">
-                  {error}
-                </div>
-              ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                <p className="text-xl font-bold text-foreground">Loading Shippers...</p>
+                <p className="text-sm text-muted-foreground mt-2 max-w-xs">Fetching data from the server</p>
+              </div>
+            ) : error ? (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive m-4">
+                {error.message || error.toString()}
+              </div>
+            ) : (
               <>
                 <Table>
                   <TableHeader>
@@ -742,16 +756,10 @@ export default function Shippers() {
         entityName={dialogs.selected?.name || ""}
         documents={dialogs.selected?.documents || []}
         onUpload={dialogs.selected ? async (meta) => {
-          await addShipperDocument(dialogs.selected!.id, meta);
-          const updated = await loadShippers();
-          const found = updated.find((s) => s.id === dialogs.selected?.id);
-          if (found) dialogs.setSelected(found);
+          await addDocument({ shipperId: dialogs.selected!.id, meta });
         } : undefined}
         onDelete={dialogs.selected ? async (docId) => {
-          await deleteShipperDocument(dialogs.selected!.id, docId);
-          const updated = await loadShippers();
-          const found = updated.find((s) => s.id === dialogs.selected?.id);
-          if (found) dialogs.setSelected(found);
+          await deleteDocument({ shipperId: dialogs.selected!.id, docId });
         } : undefined}
       />
 
@@ -793,27 +801,26 @@ export default function Shippers() {
                 </div>
               </div>
               <AddShipperForm
-              onSuccess={() => {
-                dialogs.setOpen("edit", false);
-                loadShippers();
-              }}
-              isEditing={true}
-              initialData={{
-                id: dialogs.selected.id,
-                businessName: dialogs.selected.name,
-                businessType: dialogs.selected.businessType?.toLowerCase() ?? "",
-                dealerContactEmail: dialogs.selected.contact,
-                dealerPhone: dialogs.selected.phone,
-                address: dialogs.selected.address,
-                city: dialogs.selected.city,
-                state: dialogs.selected.state,
-                ein: dialogs.selected.ein,
-                taxExempt: dialogs.selected.taxExempt,
-                hoursPickup: dialogs.selected.hoursPickup,
-                hoursDropoff: dialogs.selected.hoursDropoff,
-                principalName: dialogs.selected.principalName,
-              }}
-            />
+                onSuccess={() => {
+                  dialogs.setOpen("edit", false);
+                }}
+                isEditing={true}
+                initialData={{
+                  id: dialogs.selected.id,
+                  businessName: dialogs.selected.name,
+                  businessType: dialogs.selected.businessType?.toLowerCase() ?? "",
+                  dealerContactEmail: dialogs.selected.contact,
+                  dealerPhone: dialogs.selected.phone,
+                  address: dialogs.selected.address,
+                  city: dialogs.selected.city,
+                  state: dialogs.selected.state,
+                  ein: dialogs.selected.ein,
+                  taxExempt: dialogs.selected.taxExempt,
+                  hoursPickup: dialogs.selected.hoursPickup,
+                  hoursDropoff: dialogs.selected.hoursDropoff,
+                  principalName: dialogs.selected.principalName,
+                }}
+              />
             </>
           )}
         </DialogContent>

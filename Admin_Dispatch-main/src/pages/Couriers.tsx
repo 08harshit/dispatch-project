@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,14 @@ import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddCourierForm, CourierFormData } from "@/components/forms/AddCourierForm";
 import { toast } from "sonner";
-import { fetchCouriers, fetchCourierStats, createCourier, toggleCourierStatus, deleteCourier, updateCourierCompliance, CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
+import { CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
+import {
+  useCouriersQuery,
+  useCourierStatsQuery,
+  useToggleCourierStatusMutation,
+  useDeleteCourierMutation,
+  useUpdateCourierComplianceMutation
+} from "@/hooks/queries/useCouriers";
 import type { FilterTab } from "@/types/common";
 import { StatsGrid, StatItem } from "@/components/common/StatsGrid";
 import { HistoryDialog } from "@/components/common/HistoryDialog";
@@ -66,29 +73,29 @@ const EQUIPMENT_TYPES = [
 ];
 
 export default function Couriers() {
-  const [searchParams] = useSearchParams();
-  const [couriers, setCouriers] = useState<Courier[]>([]);
-  const [stats, setStats] = useState<CourierStats>({ total: 0, active: 0, compliant: 0, nonCompliant: 0, new: 0 });
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<FilterTab>("all");
-  const [equipmentTypeFilter, setEquipmentTypeFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // --- URL strictly-bound client state ---
+  const complianceParam = searchParams.get("compliance");
+  const activeTab: FilterTab = (complianceParam === "compliant" || complianceParam === "non-compliant" || complianceParam === "new") ? complianceParam as FilterTab : "all";
+  const equipmentTypeFilter = searchParams.get("equipment") || "all";
+  const statusFilter = searchParams.get("status") || "all";
+  const searchTerm = searchParams.get("search") || "";
+
+  // Handlers to update URL state seamlessly
+  const setActiveTab = (val: string) => setSearchParams(prev => { if (val !== "all") prev.set("compliance", val); else prev.delete("compliance"); return prev; });
+  const setEquipmentTypeFilter = (val: string) => setSearchParams(prev => { if (val !== "all") prev.set("equipment", val); else prev.delete("equipment"); return prev; });
+  const setStatusFilter = (val: string) => setSearchParams(prev => { if (val !== "all") prev.set("status", val); else prev.delete("status"); return prev; });
+  const setSearchTerm = (val: string) => setSearchParams(prev => { if (val) prev.set("search", val); else prev.delete("search"); return prev; });
+
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const dialogs = useDialogManager<Courier>();
   const { sortField, sortDir, toggleSort } = useTableSort<SortKey>("id", "asc");
 
-  useEffect(() => {
-    const compliance = searchParams.get("compliance");
-    if (compliance === "compliant" || compliance === "non-compliant") {
-      setActiveTab(compliance);
-    }
-  }, [searchParams]);
-
   // --- Build server-side filters ---
-  const buildFilters = useCallback((): CourierFilters => {
+  const apiFilters = useMemo((): CourierFilters => {
     const filters: CourierFilters = {};
     if (activeTab === "compliant") filters.compliance = "compliant";
     if (activeTab === "non-compliant") filters.compliance = "non-compliant";
@@ -98,27 +105,18 @@ export default function Couriers() {
     return filters;
   }, [activeTab, equipmentTypeFilter, statusFilter]);
 
-  // --- Fetch data from server ---
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [couriersResult, statsData] = await Promise.all([
-        fetchCouriers(buildFilters()),
-        fetchCourierStats(),
-      ]);
-      setCouriers(couriersResult.data);
-      setStats(statsData);
-    } catch (err) {
-      console.error("Failed to load couriers:", err);
-      toast.error("Failed to load couriers from server");
-    } finally {
-      setLoading(false);
-    }
-  }, [buildFilters]);
+  // --- Fetch server state via React Query ---
+  const { data: couriersResponse, isLoading: loading } = useCouriersQuery(apiFilters);
+  const { data: statsData } = useCourierStatsQuery();
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const couriers = couriersResponse?.data || [];
+  const stats = statsData || { total: 0, active: 0, compliant: 0, nonCompliant: 0, new: 0 };
+
+  // --- Mutations ---
+  const { mutateAsync: toggleStatus } = useToggleCourierStatusMutation();
+  const { mutateAsync: deleteCourierMutation } = useDeleteCourierMutation();
+  const { mutateAsync: updateCompliance } = useUpdateCourierComplianceMutation();
+
 
   useEffect(() => {
     setCurrentPage(1);
@@ -194,10 +192,9 @@ export default function Couriers() {
 
   const handleToggleStatus = async (courier: Courier) => {
     try {
-      await toggleCourierStatus(courier.id);
+      await toggleStatus(courier.id);
       const newStatus = courier.status === "active" ? "inactive" : "active";
       toast.success(`${courier.name} status updated to ${newStatus}`);
-      loadData();
     } catch (err: any) {
       console.error("Failed to toggle status:", err);
       toast.error(err.message || "Failed to toggle status");
@@ -207,9 +204,8 @@ export default function Couriers() {
   const handleDeleteCourier = async (courier: Courier) => {
     if (!confirm(`Are you sure you want to delete ${courier.name}?`)) return;
     try {
-      await deleteCourier(courier.id);
+      await deleteCourierMutation(courier.id);
       toast.success(`${courier.name} deleted successfully`);
-      loadData();
     } catch (err: any) {
       console.error("Failed to delete courier:", err);
       toast.error(err.message || "Failed to delete courier");
@@ -223,9 +219,8 @@ export default function Couriers() {
   const handleToggleCompliance = async (courier: Courier) => {
     const newCompliance = courier.compliance === "compliant" ? "non-compliant" : "compliant";
     try {
-      await updateCourierCompliance(courier.id, newCompliance);
+      await updateCompliance({ id: courier.id, compliance: newCompliance });
       toast.success(`${courier.name} compliance updated to ${newCompliance}`);
-      loadData();
     } catch (err: any) {
       console.error("Failed to update compliance:", err);
       toast.error(err.message || "Failed to update compliance");
@@ -285,7 +280,7 @@ export default function Couriers() {
               <DialogHeader>
                 <DialogTitle>Add New Courier</DialogTitle>
               </DialogHeader>
-              <AddCourierForm onSuccess={() => { setIsAddDialogOpen(false); loadData(); }} />
+              <AddCourierForm onSuccess={() => { setIsAddDialogOpen(false); }} />
             </DialogContent>
           </Dialog>
         </div>
@@ -817,25 +812,24 @@ export default function Couriers() {
                 </div>
               </div>
               <AddCourierForm
-              onSuccess={() => {
-                dialogs.setOpen("edit", false);
-                loadData();
-              }}
-              isEditing={true}
-              editingId={dialogs.selected.id}
-              initialData={{
-                id: dialogs.selected.id,
-                courierName: dialogs.selected.name,
-                businessEmail: dialogs.selected.contact,
-                businessPhone: dialogs.selected.phone,
-                address: dialogs.selected.address,
-                usdot: dialogs.selected.usdot,
-                mcNumber: dialogs.selected.mc,
-                numTrucks: String(dialogs.selected.trucks),
-                equipmentType: dialogs.selected.equipmentType,
-                insuranceCompany: dialogs.selected.insuranceCompany,
-              } as Partial<CourierFormData>}
-            />
+                onSuccess={() => {
+                  dialogs.setOpen("edit", false);
+                }}
+                isEditing={true}
+                editingId={dialogs.selected.id}
+                initialData={{
+                  id: dialogs.selected.id,
+                  courierName: dialogs.selected.name,
+                  businessEmail: dialogs.selected.contact,
+                  businessPhone: dialogs.selected.phone,
+                  address: dialogs.selected.address,
+                  usdot: dialogs.selected.usdot,
+                  mcNumber: dialogs.selected.mc,
+                  numTrucks: String(dialogs.selected.trucks),
+                  equipmentType: dialogs.selected.equipmentType,
+                  insuranceCompany: dialogs.selected.insuranceCompany,
+                } as Partial<CourierFormData>}
+              />
             </>
           )}
         </DialogContent>
