@@ -47,18 +47,18 @@ export async function fetchLoads(
     const params = new URLSearchParams();
     const statusMap: Record<string, string> = { pending: "open", delivered: "completed", cancelled: "cancelled" };
     const apiStatus = filters.status && filters.status !== "all" ? (statusMap[filters.status] ?? filters.status) : undefined;
-    
+
     if (apiStatus) params.set("status", apiStatus);
     if (filters.shipper_id) params.set("shipper_id", filters.shipper_id);
     if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
     if (filters.dateTo) params.set("dateTo", filters.dateTo);
     if (page) params.set("page", page.toString());
     if (limit) params.set("limit", limit.toString());
-    
+
     const q = params.toString();
     const path = q ? `/loads?${q}` : "/loads";
     const res = await apiGet<PaginatedLoadsResponse>(path);
-    
+
     // The wrapper `apiGet` only returns the raw response when `skipDataUnwrap` might be needed
     // Actually, `apiGet` handles unwrapping data. Let's cast directly based on the response format
     const fullRes = res as unknown as { success: boolean; data: Load[]; pagination: PaginationResult };
@@ -106,9 +106,13 @@ export interface CreateLoadPayload {
     notes?: string;
 }
 
-export async function createLoad(payload: CreateLoadPayload): Promise<void> {
-    const res = await apiPost<{ id: string }>("/loads", payload);
-    if (!res.success) throw new Error(res.error || "Failed to create load");
+export async function createLoad(payload: CreateLoadPayload): Promise<Load> {
+    const res = await apiPost<{ data: Load } | Load>("/loads", payload);
+    // Based on the wrapper, res.data might be the Load itself if apiPost unwraps it
+    // Handle both wrapped and unwrapped scenarios
+    const actualData = (res.data && 'id' in (res.data as any)) ? res.data : (res as any).data;
+    if (!res.success || !actualData) throw new Error(res.error || "Failed to create load");
+    return actualData as Load;
 }
 
 export interface UpdateLoadPayload {

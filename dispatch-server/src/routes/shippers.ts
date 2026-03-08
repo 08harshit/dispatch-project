@@ -93,10 +93,10 @@ router.get("/", async (req: Request, res: Response) => {
             .is("deleted_at", null)
             .order("created_at", { ascending: false });
 
-        if (compliance) query = query.eq("compliance", compliance as string);
-        if (status) query = query.eq("status", status as string);
-        if (state) query = query.eq("state", state as string);
-        if (businessType) query = query.eq("business_type", businessType as string);
+        if (compliance && compliance !== "all") query = query.eq("compliance", compliance as string);
+        if (status && status !== "all") query = query.eq("status", status as string);
+        if (state && state !== "all") query = query.eq("state", state as string);
+        if (businessType && businessType !== "all") query = query.eq("business_type", businessType as string);
         if (isNew === "true") query = query.eq("is_new", true);
         if (search && String(search).trim()) {
             const term = `%${String(search).trim()}%`;

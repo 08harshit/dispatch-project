@@ -1,17 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { getColorClasses, getPerformanceStatusConfig } from "@/utils/styleHelpers";
 import {
   DateRange,
   PerformanceFilter,
   dateRangeLabels,
-  AnalyticsStatItem,
-  DeliveryTrendItem,
-  CourierPerformanceItem,
-  fetchAnalyticsStats,
-  fetchDeliveryTrends,
-  fetchCourierPerformance,
 } from "@/services/analyticsService";
+import {
+  useAnalyticsStatsQuery,
+  useDeliveryTrendsQuery,
+  useCourierPerformanceQuery
+} from "@/hooks/queries/useAnalytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,31 +50,25 @@ import {
 const getStatusConfig = getPerformanceStatusConfig;
 
 export default function Analytics() {
-  const [dateRange, setDateRange] = useState<DateRange>("7days");
-  const [performanceFilter, setPerformanceFilter] = useState<PerformanceFilter>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [dateRange, setDateRange] = useState<DateRange>((searchParams.get("range") as DateRange) || "7days");
+  const [performanceFilter, setPerformanceFilter] = useState<PerformanceFilter>((searchParams.get("filter") as PerformanceFilter) || "all");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [statsData, setStatsData] = useState<Record<DateRange, AnalyticsStatItem[]>>({} as Record<DateRange, AnalyticsStatItem[]>);
-  const [deliveryTrendsData, setDeliveryTrendsData] = useState<Record<DateRange, DeliveryTrendItem[]>>({} as Record<DateRange, DeliveryTrendItem[]>);
-  const [courierPerformance, setCourierPerformance] = useState<CourierPerformanceItem[]>([]);
 
   useEffect(() => {
-    const ranges: DateRange[] = ["7days", "14days", "30days", "90days"];
-    const loadAll = async () => {
-      const statsEntries = await Promise.all(
-        ranges.map(async (r) => [r, await fetchAnalyticsStats(r)] as const)
-      );
-      setStatsData(Object.fromEntries(statsEntries) as Record<DateRange, AnalyticsStatItem[]>);
-      const trendEntries = await Promise.all(
-        ranges.map(async (r) => [r, await fetchDeliveryTrends(r)] as const)
-      );
-      setDeliveryTrendsData(Object.fromEntries(trendEntries) as Record<DateRange, DeliveryTrendItem[]>);
-      setCourierPerformance(await fetchCourierPerformance());
-    };
-    loadAll();
-  }, []);
+    const params = new URLSearchParams(searchParams);
+    if (dateRange === "7days") params.delete("range");
+    else params.set("range", dateRange);
 
-  const currentStats = statsData[dateRange] || [];
-  const currentDeliveryTrends = deliveryTrendsData[dateRange] || [];
+    if (performanceFilter === "all") params.delete("filter");
+    else params.set("filter", performanceFilter);
+
+    setSearchParams(params, { replace: true });
+  }, [dateRange, performanceFilter, setSearchParams, searchParams]);
+
+  const { data: currentStats = [] } = useAnalyticsStatsQuery(dateRange);
+  const { data: currentDeliveryTrends = [] } = useDeliveryTrendsQuery(dateRange);
+  const { data: courierPerformance = [] } = useCourierPerformanceQuery();
 
   const filteredCouriers = useMemo(() => {
     if (performanceFilter === "all") return courierPerformance;

@@ -144,6 +144,44 @@ export async function getCourier(id: string) {
     return result.data;
 }
 
+/** Helper to fetch a fully populated CourierListItem for mutation responses (Zero-GET strategy) */
+export async function getFullCourier(id: string): Promise<CourierListItem> {
+    const coreResult = await courierRepo.findById(id);
+    if (coreResult.error || !coreResult.data) {
+        throw new Error(coreResult.error || "Courier not found");
+    }
+    const c = coreResult.data;
+
+    const [trucksMap, insuranceMap, historyMap, docsMap] = await Promise.all([
+        courierRepo.findTrucksByCourierIds([id]),
+        courierRepo.findInsuranceByCourierIds([id]),
+        historyRepo.findByCourierIds([id]),
+        documentRepo.findByCourierIds([id]),
+    ]);
+
+    const trucks = trucksMap.get(id) || [];
+    const totalTrucks = trucks.reduce((sum, t) => sum + (t.count || 0), 0);
+    const equipmentTypes = trucks.map(t => t.equipment_type).filter(Boolean);
+
+    return {
+        id: c.id,
+        name: c.name || "",
+        contact: c.contact_email || "",
+        phone: c.phone || "",
+        compliance: c.compliance || "non-compliant",
+        address: c.address || "",
+        usdot: c.usdot || "",
+        mc: c.mc || "",
+        status: c.status || "active",
+        trucks: totalTrucks,
+        insuranceCompany: insuranceMap.get(id) || "",
+        equipmentType: equipmentTypes.join(", ") || "",
+        isNew: c.is_new || false,
+        history: historyMap.get(id) || [],
+        documents: docsMap.get(id) || [],
+    };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Stats                                                              */
 /* ------------------------------------------------------------------ */
@@ -163,7 +201,7 @@ export async function getStats(): Promise<CourierStats> {
 /*  Create courier                                                     */
 /* ------------------------------------------------------------------ */
 
-export async function createCourier(body: CourierFormBody): Promise<{ id: string }> {
+export async function createCourier(body: CourierFormBody): Promise<CourierListItem> {
     // 1. Insert core courier row
     const result = await courierRepo.create({
         name: body.courierName || "",
@@ -245,14 +283,14 @@ export async function createCourier(body: CourierFormBody): Promise<{ id: string
 
     await Promise.all(relatedOps);
 
-    return { id: courierId };
+    return getFullCourier(courierId);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Update courier                                                     */
 /* ------------------------------------------------------------------ */
 
-export async function updateCourier(id: string, body: CourierFormBody): Promise<void> {
+export async function updateCourier(id: string, body: CourierFormBody): Promise<CourierListItem> {
     // 1. Build partial update for core fields
     const courierData: Partial<courierRepo.CreateCourierData> = {};
     if (body.courierName !== undefined) courierData.name = body.courierName;
@@ -330,20 +368,22 @@ export async function updateCourier(id: string, body: CourierFormBody): Promise<
     );
 
     await Promise.all(relatedOps);
+
+    return getFullCourier(id);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Toggle status                                                      */
 /* ------------------------------------------------------------------ */
 
-export async function toggleStatus(id: string): Promise<{ status: string }> {
+export async function toggleStatus(id: string): Promise<CourierListItem> {
     const result = await courierRepo.toggleStatus(id);
     if (result.error) throw new Error(result.error);
 
     const newStatus = result.data!.status;
     await historyRepo.addEntry(id, `Status changed to ${newStatus}`);
 
-    return { status: newStatus };
+    return getFullCourier(id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -406,10 +446,12 @@ export async function setCourierPassword(id: string, password: string): Promise<
 export async function setCompliance(
     id: string,
     compliance: "compliant" | "non-compliant",
-): Promise<void> {
+): Promise<CourierListItem> {
     const result = await courierRepo.updateCompliance(id, compliance);
     if (result.error) throw new Error(result.error);
     await historyRepo.addEntry(id, `Compliance changed to ${compliance}`);
+
+    return getFullCourier(id);
 }
 
 /* ------------------------------------------------------------------ */

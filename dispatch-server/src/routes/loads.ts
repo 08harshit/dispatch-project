@@ -14,7 +14,7 @@ type DocParams = { id: string; docId: string };
 
 function parseFilters(query: Request["query"]) {
     return {
-        status: query.status as string | undefined,
+        status: query.status === "all" ? undefined : query.status as string | undefined,
         shipper_id: query.shipper_id as string | undefined,
         dateFrom: query.dateFrom as string | undefined,
         dateTo: query.dateTo as string | undefined,

@@ -30,9 +30,9 @@ type DocParams = { id: string; docId: string };
 function parseFilters(query: Request["query"]) {
     return {
         search: query.search as string | undefined,
-        compliance: query.compliance as string | undefined,
-        status: query.status as string | undefined,
-        equipmentType: query.equipmentType as string | undefined,
+        compliance: query.compliance === "all" ? undefined : query.compliance as string | undefined,
+        status: query.status === "all" ? undefined : query.status as string | undefined,
+        equipmentType: query.equipmentType === "all" ? undefined : query.equipmentType as string | undefined,
         isNew: query.isNew as string | undefined,
     };
 }
@@ -202,8 +202,8 @@ router.post("/", async (req: Request, res: Response) => {
 router.put("/:id", validateUuidParam(), async (req: Request<IdParams>, res: Response) => {
     try {
         const { id } = req.params;
-        await courierService.updateCourier(id, req.body);
-        res.json({ success: true, message: `Courier ${id} updated` });
+        const result = await courierService.updateCourier(id, req.body);
+        res.json({ success: true, data: result, message: `Courier ${id} updated` });
     } catch (err: any) {
         logger.error({ err, courierId: req.params.id }, "Error updating courier");
         res.status(500).json({ success: false, error: err.message });
@@ -402,8 +402,8 @@ router.patch(
     async (req: Request<IdParams>, res: Response) => {
         try {
             const { id } = req.params;
-            await courierService.setCompliance(id, req.body.compliance);
-            res.json({ success: true, message: `Compliance updated to ${req.body.compliance}` });
+            const result = await courierService.setCompliance(id, req.body.compliance);
+            res.json({ success: true, data: result, message: `Compliance updated to ${req.body.compliance}` });
         } catch (err: any) {
             logger.error({ err, courierId: req.params.id }, "Error updating compliance");
             res.status(500).json({ success: false, error: err.message });
