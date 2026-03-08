@@ -53,14 +53,16 @@ export function useCreateLoadMutation() {
         onSuccess: (newLoad) => {
             queryClient.invalidateQueries({ queryKey: loadKeys.stats() });
 
-            // Invalidate the lists to force a fresh fetch from the server
-            queryClient.invalidateQueries({ queryKey: loadKeys.lists() });
-
             // Optimistically inject the newly created load into ALL list cache arrays
             queryClient.setQueriesData<PaginatedLoadsResponse | undefined>(
                 { queryKey: loadKeys.lists() },
                 (oldData) => {
-                    if (!oldData || !oldData.data) return oldData;
+                    if (!oldData || !oldData.data) {
+                        return {
+                            data: [newLoad],
+                            pagination: { page: 1, limit: 10, total: 1, totalPages: 1 }
+                        };
+                    }
                     return {
                         ...oldData,
                         data: [newLoad, ...oldData.data]
@@ -129,10 +131,21 @@ export function useDeleteLoadMutation() {
         onSuccess: (_, deletedId) => {
             queryClient.invalidateQueries({ queryKey: loadKeys.stats() });
 
-            // Since it's a soft delete, we'll update the status to cancelled 
-            // OR fully remove depending on the UI (assuming fully remove from default view or update status)
-            // Let's just invalidate for full consistency
-            queryClient.invalidateQueries({ queryKey: loadKeys.lists() });
+            // Filter out the deleted load directly from the cache
+            queryClient.setQueriesData<PaginatedLoadsResponse | undefined>(
+                { queryKey: loadKeys.lists() },
+                (oldData) => {
+                    if (!oldData || !oldData.data) return oldData;
+                    return {
+                        ...oldData,
+                        data: oldData.data.filter(load => load.id !== deletedId),
+                        pagination: {
+                            ...oldData.pagination,
+                            total: Math.max(0, oldData.pagination.total - 1),
+                        }
+                    };
+                }
+            );
         },
     });
 }

@@ -51,14 +51,21 @@ export function useCreateCourierMutation() {
             // Invalidate stats to trigger a refetch
             queryClient.invalidateQueries({ queryKey: courierKeys.stats() });
 
-            // Invalidate the lists to force a fresh fetch from the server so newly created rows cleanly appear
-            queryClient.invalidateQueries({ queryKey: courierKeys.lists() });
-
             // Optimistically inject the newly created courier into current paginated lists
             queryClient.setQueriesData<PaginatedCouriersResponse>(
                 { queryKey: courierKeys.lists() },
                 (oldData) => {
-                    if (!oldData || !oldData.data) return oldData;
+                    if (!oldData || !oldData.data) {
+                        return {
+                            data: [newCourier],
+                            pagination: {
+                                page: 1,
+                                limit: 10,
+                                total: 1,
+                                totalPages: 1
+                            }
+                        };
+                    }
                     return {
                         ...oldData,
                         data: [newCourier, ...oldData.data],
