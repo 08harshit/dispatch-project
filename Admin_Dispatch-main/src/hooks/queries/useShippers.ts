@@ -53,6 +53,9 @@ export function useCreateShipperMutation() {
             // Invalidate stats to trigger a refetch
             queryClient.invalidateQueries({ queryKey: shipperKeys.stats() });
 
+            // Invalidate the lists to force a fresh fetch from the server
+            queryClient.invalidateQueries({ queryKey: shipperKeys.lists() });
+
             // Optimistically inject the newly created shipper into ALL list cache arrays
             queryClient.setQueriesData<Shipper[]>(
                 { queryKey: shipperKeys.lists() },

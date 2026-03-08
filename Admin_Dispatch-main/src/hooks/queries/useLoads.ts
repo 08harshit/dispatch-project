@@ -53,11 +53,14 @@ export function useCreateLoadMutation() {
         onSuccess: (newLoad) => {
             queryClient.invalidateQueries({ queryKey: loadKeys.stats() });
 
+            // Invalidate the lists to force a fresh fetch from the server
+            queryClient.invalidateQueries({ queryKey: loadKeys.lists() });
+
             // Optimistically inject the newly created load into ALL list cache arrays
             queryClient.setQueriesData<PaginatedLoadsResponse | undefined>(
                 { queryKey: loadKeys.lists() },
                 (oldData) => {
-                    if (!oldData) return oldData;
+                    if (!oldData || !oldData.data) return oldData;
                     return {
                         ...oldData,
                         data: [newLoad, ...oldData.data]
