@@ -21,18 +21,16 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // --------------- CORS ---------------
-const allowedOrigins = [
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://localhost:8082",
-    "http://localhost:8083",
-];
+// Uses config.cors.origins: in dev = true (allow any); in prod = CORS_ORIGINS env (comma-separated)
+const corsOrigins = config.cors.origins;
 app.use(
     cors({
-        origin: (origin, cb) => {
-            if (!origin || allowedOrigins.includes(origin)) return cb(null, origin || true);
-            cb(null, false);
-        },
+        origin: corsOrigins === true
+            ? true
+            : (origin, cb) => {
+                if (!origin || (Array.isArray(corsOrigins) && corsOrigins.includes(origin))) return cb(null, origin || true);
+                cb(null, false);
+            },
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "X-Cron-Secret"],
