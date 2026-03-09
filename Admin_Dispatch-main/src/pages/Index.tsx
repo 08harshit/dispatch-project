@@ -210,7 +210,7 @@ const Index = () => {
             icon={ArrowLeftRight}
             trend={{ value: 23, isPositive: true }}
             delay={200}
-            to="/accounting"
+            to="/analytics?tab=accounting"
           />
           <StatCard
             title="Active Alerts"

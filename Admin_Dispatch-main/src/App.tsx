@@ -20,12 +20,12 @@ import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import Couriers from "./pages/Couriers";
 import Shippers from "./pages/Shippers";
-import Accounting from "./pages/Accounting";
 import Analytics from "./pages/Analytics";
 import Loads from "./pages/Loads";
 // import Contracts from "./pages/Contracts"; // MODULE DISABLED
 import Trips from "./pages/Trips";
 import TripDetail from "./pages/TripDetail";
+import Communication from "./pages/Communication";
 // import Vehicles from "./pages/Vehicles"; // MODULE DISABLED
 // import VehicleAccess from "./pages/VehicleAccess"; // MODULE DISABLED
 import Settings from "./pages/Settings";
@@ -64,6 +64,10 @@ function useNetworkStatus() {
 function ShipperIdRedirect() {
   const { shipperId } = useParams();
   return <Navigate to={`/shippers?shipper_id=${encodeURIComponent(shipperId || "")}`} replace />;
+}
+
+function AccountingRedirect() {
+  return <Navigate to="/analytics?tab=accounting" replace />;
 }
 
 // MODULE DISABLED: VehicleIdRedirect
@@ -150,10 +154,11 @@ function AppContent() {
             {/* <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />
             <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
+            <Route path="/communication" element={<ProtectedRoute><Communication /></ProtectedRoute>} />
             {/* <Route path="/vehicles/:vehicleId" element={<ProtectedRoute><VehicleIdRedirect /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             {/* <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             {/* <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
-            <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
+            <Route path="/accounting" element={<ProtectedRoute><AccountingRedirect /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

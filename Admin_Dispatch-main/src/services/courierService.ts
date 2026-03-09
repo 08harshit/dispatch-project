@@ -138,3 +138,24 @@ export async function deleteCourierDocument(id: string, docId: string): Promise<
     await apiDelete<void>(`/couriers/${id}/documents/${docId}`);
 }
 
+// --- FMCSA Verification (server-side proxy to avoid 403) ---
+
+export interface FMCSAVerifyResult {
+    verified: boolean;
+    status: "verified" | "flagged" | "not_found";
+    message?: string;
+    carrier?: {
+        dotNumber: string;
+        mcNumber?: string;
+        legalName: string;
+        operatingStatus: string;
+        phone?: string;
+        isValid: boolean;
+    };
+}
+
+export async function verifyFmcsa(usdot: string): Promise<FMCSAVerifyResult> {
+    const res = await apiGet<FMCSAVerifyResult>(`/couriers/verify-fmcsa?usdot=${encodeURIComponent(usdot)}`);
+    return res.data;
+}
+
