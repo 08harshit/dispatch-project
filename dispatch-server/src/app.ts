@@ -21,9 +21,18 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // --------------- CORS ---------------
+const allowedOrigins = [
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost:8082",
+    "http://localhost:8083",
+];
 app.use(
     cors({
-        origin: true, // Reflects the incoming origin completely
+        origin: (origin, cb) => {
+            if (!origin || allowedOrigins.includes(origin)) return cb(null, origin || true);
+            cb(null, false);
+        },
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "X-Cron-Secret"],
@@ -34,7 +43,7 @@ app.use(
 app.use(
     rateLimit({
         windowMs: 15 * 60 * 1000, // 15 minutes
-        max: 100,
+        max: config.nodeEnv === "production" ? 100 : 1000, // lenient in dev for dashboard prefetch + multiple tabs
         standardHeaders: true,
         legacyHeaders: false,
         message: { success: false, error: "Too many requests, please try again later" },

@@ -40,7 +40,9 @@ export default function Auth() {
   }, []);
 
   if (loading) return null;
-  if (session && view !== "reset") return <Navigate to="/dashboard" replace />;
+  if (session && view !== "reset") {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
