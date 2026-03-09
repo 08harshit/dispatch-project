@@ -42,7 +42,7 @@ import { AccountPasswordDialog } from "@/components/AccountPasswordDialog";
 import { cn } from "@/lib/utils";
 import { AddCourierForm, CourierFormData } from "@/components/forms/AddCourierForm";
 import { toast } from "sonner";
-import { CourierListItem, CourierStats, CourierFilters } from "@/services/courierService";
+import { CourierListItem, CourierStats, CourierFilters, verifyFmcsa, type FMCSAVerifyResult } from "@/services/courierService";
 import {
   useCouriersQuery,
   useCourierStatsQuery,
@@ -91,6 +91,7 @@ export default function Couriers() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [fmcsaDialog, setFmcsaDialog] = useState<{ open: boolean; usdot: string; loading: boolean; result: FMCSAVerifyResult | null }>({ open: false, usdot: "", loading: false, result: null });
   const dialogs = useDialogManager<Courier>();
   const { sortField, sortDir, toggleSort } = useTableSort<SortKey>("id", "asc");
 
@@ -175,11 +176,13 @@ export default function Couriers() {
   const newCouriersCount = stats.new;
   const alertsCount = nonCompliantCount;
 
-  const hasActiveFilters = equipmentTypeFilter !== "all" || statusFilter !== "all";
+  const hasActiveFilters = activeTab !== "all" || equipmentTypeFilter !== "all" || statusFilter !== "all" || !!searchTerm;
 
   const clearFilters = () => {
+    setActiveTab("all");
     setEquipmentTypeFilter("all");
     setStatusFilter("all");
+    setSearchTerm("");
     setCurrentPage(1);
   };
 
@@ -212,8 +215,18 @@ export default function Couriers() {
     }
   };
 
-  const handleVerifyFMCSA = (usdot: string) => {
-    window.open(`https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&query_string=${usdot}`, '_blank');
+  const handleVerifyFMCSA = async (usdot: string) => {
+    setFmcsaDialog({ open: true, usdot, loading: true, result: null });
+    try {
+      const result = await verifyFmcsa(usdot);
+      setFmcsaDialog((prev) => ({ ...prev, loading: false, result }));
+    } catch (err: unknown) {
+      setFmcsaDialog((prev) => ({
+        ...prev,
+        loading: false,
+        result: { verified: false, status: "not_found", message: err instanceof Error ? err.message : "Failed to verify" },
+      }));
+    }
   };
 
   const handleToggleCompliance = async (courier: Courier) => {
@@ -601,10 +614,10 @@ export default function Couriers() {
                         <TableCell colSpan={8} className="h-32 text-center">
                           <EmptyState
                             icon={Truck}
-                            title="No couriers found"
-                            description="Try adjusting your search criteria or filters to find what you're looking for"
-                            actionLabel="Clear Filters"
-                            onAction={clearFilters}
+                            title={couriers.length === 0 ? "No couriers yet" : "No couriers found"}
+                            description={couriers.length === 0 ? "Get started by adding your first courier" : "Try adjusting your search criteria or filters to find what you're looking for"}
+                            actionLabel={couriers.length === 0 ? "Add Courier" : "Clear Filters"}
+                            onAction={couriers.length === 0 ? () => setIsAddDialogOpen(true) : clearFilters}
                           />
                         </TableCell>
                       </TableRow>
@@ -755,6 +768,69 @@ export default function Couriers() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* FMCSA Verification Dialog */}
+      <Dialog open={fmcsaDialog.open} onOpenChange={(open) => setFmcsaDialog((prev) => ({ ...prev, open, result: open ? prev.result : null }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>FMCSA Verification</DialogTitle>
+            <DialogDescription>
+              USDOT: {fmcsaDialog.usdot}
+            </DialogDescription>
+          </DialogHeader>
+          {fmcsaDialog.loading ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4" />
+              <p className="text-sm text-muted-foreground">Verifying with FMCSA SAFER...</p>
+            </div>
+          ) : fmcsaDialog.result ? (
+            <div className="space-y-4">
+              {fmcsaDialog.result.status === "not_found" ? (
+                <div className="p-4 rounded-lg bg-destructive/10 text-destructive">
+                  <p className="font-medium">{fmcsaDialog.result.message || "No carrier found with this DOT number"}</p>
+                </div>
+              ) : fmcsaDialog.result.carrier ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge className={fmcsaDialog.result.verified ? "bg-success/10 text-success border-0" : "bg-warning/10 text-warning border-0"}>
+                      {fmcsaDialog.result.verified ? "Verified" : "Flagged"}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Legal Name</p>
+                    <p className="font-medium">{fmcsaDialog.result.carrier.legalName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Operating Status</p>
+                    <p className="text-sm">{fmcsaDialog.result.carrier.operatingStatus}</p>
+                  </div>
+                  {fmcsaDialog.result.carrier.mcNumber && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">MC #</p>
+                      <p className="font-mono text-sm">{fmcsaDialog.result.carrier.mcNumber}</p>
+                    </div>
+                  )}
+                  {fmcsaDialog.result.carrier.phone && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Phone</p>
+                      <p className="text-sm">{fmcsaDialog.result.carrier.phone}</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => window.open(`https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&query_string=${fmcsaDialog.usdot}`, "_blank")}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open on FMCSA (external)
+              </Button>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

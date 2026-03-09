@@ -317,13 +317,14 @@ export default function Tickets() {
                 {!loading && !error && filteredTickets.length === 0 && (
                   <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">No tickets found</TableCell></TableRow>
                 )}
-                {!loading && !error && filteredTickets.length > 0 && filteredTickets.map((ticket) => {
+                {!loading && !error && filteredTickets.length > 0 && filteredTickets.map((ticket, index) => {
+                    const displayId = `TK-${String(index + 1).padStart(3, "0")}`;
                     const priorityConf = getPriorityConfig(ticket.priority);
                     const statusConf = getStatusConfig(ticket.status);
                     const StatusIcon = statusConf.icon;
                     return (
                       <TableRow key={ticket.id} className="group hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => dialogs.open("view", ticket)}>
-                        <TableCell className="font-mono text-xs text-primary/80">{ticket.id}</TableCell>
+                        <TableCell className="font-mono text-xs text-primary/80">{displayId}</TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium text-foreground">{ticket.title}</p>
@@ -402,6 +403,8 @@ export default function Tickets() {
         <Dialog open={dialogs.isOpen("view")} onOpenChange={dialogs.setOpen.bind(null, "view")}>
           <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
             {dialogs.selected && (() => {
+              const idx = filteredTickets.findIndex((t) => t.id === dialogs.selected!.id);
+              const displayId = idx >= 0 ? `TK-${String(idx + 1).padStart(3, "0")}` : dialogs.selected.id;
               const pc = getPriorityConfig(dialogs.selected.priority);
               const sc = getStatusConfig(dialogs.selected.status);
               const SI = sc.icon;
@@ -409,7 +412,7 @@ export default function Tickets() {
                 <>
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-lg">
-                      <span className="font-mono text-primary">{dialogs.selected.id}</span>
+                      <span className="font-mono text-primary">{displayId}</span>
                       {dialogs.selected.title}
                     </DialogTitle>
                   </DialogHeader>

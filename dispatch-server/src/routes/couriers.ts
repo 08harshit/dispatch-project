@@ -14,6 +14,7 @@ import { z } from "zod";
 import { logger } from "../utils/logger";
 import { validateBody, validateUuidParam } from "../utils/validate";
 import * as courierService from "../services/courierService";
+import * as fmcsaService from "../services/fmcsaService";
 
 const router = Router();
 
@@ -114,6 +115,52 @@ router.get("/stats", async (_req: Request, res: Response) => {
         res.json({ success: true, data: stats });
     } catch (err: any) {
         logger.error({ err }, "Error in GET /couriers/stats");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
+ * @swagger
+ * /couriers/verify-fmcsa:
+ *   get:
+ *     summary: Verify carrier via FMCSA SAFER (server-side proxy to avoid 403)
+ *     tags: [Couriers]
+ *     parameters:
+ *       - in: query
+ *         name: usdot
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: FMCSA verification result
+ */
+router.get("/verify-fmcsa", async (req: Request, res: Response) => {
+    try {
+        const usdot = (req.query.usdot as string)?.trim();
+        if (!usdot) {
+            return res.status(400).json({ success: false, error: "USDOT number is required" });
+        }
+        const carrierInfo = await fmcsaService.fetchFMCSAData(usdot);
+        if (!carrierInfo) {
+            return res.json({
+                success: true,
+                data: {
+                    verified: false,
+                    status: "not_found",
+                    message: "No carrier found with this DOT number",
+                },
+            });
+        }
+        res.json({
+            success: true,
+            data: {
+                verified: carrierInfo.isValid,
+                status: carrierInfo.isValid ? "verified" : "flagged",
+                carrier: carrierInfo,
+            },
+        });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /couriers/verify-fmcsa");
         res.status(500).json({ success: false, error: err.message });
     }
 });

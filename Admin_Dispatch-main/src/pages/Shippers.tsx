@@ -167,9 +167,10 @@ export default function Shippers() {
   const newShippersCount = stats.new;
   const alertsCount = stats.alerts;
 
-  const hasActiveFilters = businessTypeFilter !== "all" || stateFilter !== "all" || !!searchTerm;
+  const hasActiveFilters = activeTab !== "all" || businessTypeFilter !== "all" || stateFilter !== "all" || !!searchTerm;
 
   const clearFilters = () => {
+    setActiveTab("all");
     setBusinessTypeFilter("all");
     setStateFilter("all");
     setSearchTerm("");
@@ -464,10 +465,10 @@ export default function Shippers() {
                         <TableCell colSpan={8} className="h-32 text-center">
                           <EmptyState
                             icon={Package}
-                            title="No shippers found"
-                            description={stats.total === 0 ? "Add a shipper to get started." : "No shippers match your filters or search."}
-                            actionLabel={hasActiveFilters ? "Clear Filters" : undefined}
-                            onAction={hasActiveFilters ? clearFilters : undefined}
+                            title={shippers.length === 0 ? "No shippers yet" : "No shippers found"}
+                            description={shippers.length === 0 ? "Get started by adding your first shipper" : "Try adjusting your search criteria or filters to find what you're looking for"}
+                            actionLabel={shippers.length === 0 ? "Add Shipper" : "Clear Filters"}
+                            onAction={shippers.length === 0 ? () => setIsAddDialogOpen(true) : clearFilters}
                           />
                         </TableCell>
                       </TableRow>

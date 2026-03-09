@@ -3,7 +3,6 @@ import {
   Home,
   Truck,
   Package,
-  Calculator,
   BarChart3,
   Settings,
   LogOut,
@@ -13,9 +12,7 @@ import {
   PackageOpen,
   TicketCheck,
   MessageCircle,
-  FileText, // kept for potential future use
-  MapPin,   // kept for potential future use
-  KeyRound, // kept for potential future use
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,14 +22,10 @@ import { useAuth } from "@/contexts/AuthContext";
 const navigation = [
   { name: "Home", href: "/dashboard", icon: Home },
   { name: "Couriers", href: "/couriers", icon: Truck },
+  { name: "Communication", href: "/communication", icon: MessageCircle },
   { name: "Shippers", href: "/shippers", icon: Package },
   { name: "Loads", href: "/loads", icon: PackageOpen },
-  // { name: "Contracts", href: "/contracts", icon: FileText }, // MODULE DISABLED
   { name: "Trips", href: "/trips", icon: MapPin },
-  { name: "Communication", href: "/communication", icon: MessageCircle },
-  // { name: "Vehicles", href: "/vehicles", icon: Truck }, // MODULE DISABLED
-  // { name: "Vehicle Access", href: "/vehicle-access", icon: KeyRound }, // MODULE DISABLED
-  { name: "Accounting", href: "/accounting", icon: Calculator },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Tickets", href: "/tickets", icon: TicketCheck },
 ];
