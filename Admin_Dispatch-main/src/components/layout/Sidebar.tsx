@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   PackageOpen,
   TicketCheck,
+  MessageCircle,
   FileText, // kept for potential future use
   MapPin,   // kept for potential future use
   KeyRound, // kept for potential future use
@@ -28,6 +29,7 @@ const navigation = [
   { name: "Loads", href: "/loads", icon: PackageOpen },
   // { name: "Contracts", href: "/contracts", icon: FileText }, // MODULE DISABLED
   { name: "Trips", href: "/trips", icon: MapPin },
+  { name: "Communication", href: "/communication", icon: MessageCircle },
   // { name: "Vehicles", href: "/vehicles", icon: Truck }, // MODULE DISABLED
   // { name: "Vehicle Access", href: "/vehicle-access", icon: KeyRound }, // MODULE DISABLED
   { name: "Accounting", href: "/accounting", icon: Calculator },

@@ -26,6 +26,7 @@ import Loads from "./pages/Loads";
 // import Contracts from "./pages/Contracts"; // MODULE DISABLED
 import Trips from "./pages/Trips";
 import TripDetail from "./pages/TripDetail";
+import Communication from "./pages/Communication";
 // import Vehicles from "./pages/Vehicles"; // MODULE DISABLED
 // import VehicleAccess from "./pages/VehicleAccess"; // MODULE DISABLED
 import Settings from "./pages/Settings";
@@ -150,6 +151,7 @@ function AppContent() {
             {/* <Route path="/contracts" element={<ProtectedRoute><Contracts /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             <Route path="/trips" element={<ProtectedRoute><Trips /></ProtectedRoute>} />
             <Route path="/trips/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
+            <Route path="/communication" element={<ProtectedRoute><Communication /></ProtectedRoute>} />
             {/* <Route path="/vehicles/:vehicleId" element={<ProtectedRoute><VehicleIdRedirect /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             {/* <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
             {/* <Route path="/vehicle-access" element={<ProtectedRoute><VehicleAccess /></ProtectedRoute>} /> */} {/* MODULE DISABLED */}
