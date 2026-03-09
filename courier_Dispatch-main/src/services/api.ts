@@ -15,9 +15,16 @@ function assertOnline(): void {
   }
 }
 
+let authRedirectPending = false;
+
 function handleResponseError(res: Response, data: { error?: string }): never {
   if (res.status === 401) {
-    window.location.href = "/auth";
+    if (!authRedirectPending) {
+      authRedirectPending = true;
+      supabase.auth.signOut().finally(() => {
+        window.location.href = "/auth";
+      });
+    }
   }
   throw new Error(data.error || `API error: ${res.status}`);
 }
