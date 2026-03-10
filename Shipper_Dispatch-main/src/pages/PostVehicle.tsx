@@ -77,40 +77,6 @@ const PostVehicle = () => {
     }));
   };
 
-  // Add vehicle from inventory
-  const handleAddFromInventory = (inventoryVehicle: {
-    id: string;
-    vin: string;
-    year: string;
-    make: string;
-    model: string;
-    type: string;
-    color: string;
-  }) => {
-    const vehicle: VehicleEntry = {
-      id: crypto.randomUUID(),
-      vin: inventoryVehicle.vin,
-      year: inventoryVehicle.year,
-      make: inventoryVehicle.make,
-      model: inventoryVehicle.model,
-      type: inventoryVehicle.type,
-      color: inventoryVehicle.color,
-      condition: {
-        runs: true,
-        rolls: true,
-        starts: true,
-        damaged: false,
-      },
-      conditionNotes: "",
-      conditionPhotos: [],
-    };
-    
-    setFormData((prev) => ({
-      ...prev,
-      vehicles: [...prev.vehicles, vehicle],
-    }));
-  };
-
   // Remove vehicle
   const removeVehicle = (id: string) => {
     setFormData((prev) => ({
@@ -371,7 +337,6 @@ const PostVehicle = () => {
             ) : (
               <VehicleSelector
                 selectedVehicles={formData.vehicles}
-                onAddFromInventory={handleAddFromInventory}
                 onRemoveVehicle={removeVehicle}
                 onAddNewVehicle={handleAddNewVehicle}
               />

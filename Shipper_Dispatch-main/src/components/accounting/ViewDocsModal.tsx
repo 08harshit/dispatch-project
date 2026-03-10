@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -38,13 +38,6 @@ interface ViewDocsModalProps {
   record: AccountingRecord | null;
 }
 
-// Mock documents data - in real app this would come from the database
-const getInitialDocs = (listingId: string): DocFile[] => [
-  { id: "1", name: `Invoice_${listingId}.pdf`, type: "pdf", size: "245 KB", date: "2024-01-15" },
-  { id: "2", name: `BOL_${listingId}.pdf`, type: "pdf", size: "180 KB", date: "2024-01-14" },
-  { id: "3", name: `Photo_${listingId}.jpg`, type: "image", size: "1.2 MB", date: "2024-01-14" },
-];
-
 const getFileIcon = (type: string) => {
   switch (type) {
     case "pdf":
@@ -77,12 +70,11 @@ const ViewDocsModal = ({ open, onOpenChange, record }: ViewDocsModalProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize docs when record changes
-  useState(() => {
+  useEffect(() => {
     if (record) {
-      setDocs(getInitialDocs(record.listingId));
+      setDocs([]);
     }
-  });
+  }, [record]);
 
   if (!record) return null;
 
@@ -133,7 +125,7 @@ const ViewDocsModal = ({ open, onOpenChange, record }: ViewDocsModalProps) => {
     }
   };
 
-  const displayDocs = docs.length > 0 ? docs : getInitialDocs(record.listingId);
+  const displayDocs = docs;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,7 +188,10 @@ const ViewDocsModal = ({ open, onOpenChange, record }: ViewDocsModalProps) => {
 
           {/* Documents List */}
           <div className="space-y-2 max-h-[300px] overflow-y-auto">
-            {displayDocs.map((doc) => (
+            {displayDocs.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No documents yet. Add one using the upload area above.</p>
+            ) : (
+            displayDocs.map((doc) => (
               <div
                 key={doc.id}
                 className={cn(
@@ -241,7 +236,8 @@ const ViewDocsModal = ({ open, onOpenChange, record }: ViewDocsModalProps) => {
                   </Button>
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
         </div>
       </DialogContent>

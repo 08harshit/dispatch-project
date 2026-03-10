@@ -19,7 +19,6 @@ import ShipmentDocsModal from "@/components/shipping/ShipmentDocsModal";
 import ColumnFiltersBar, { ColumnFilters } from "@/components/shipping/ColumnFiltersBar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
 import { useShipperId } from "@/hooks/useShipperId";
 import { useShipperLoads } from "@/hooks/useShipperLoads";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,8 +28,7 @@ import VehicleSelector from "@/components/post-vehicle/VehicleSelector";
 import ShippingDetailsSection from "@/components/post-vehicle/ShippingDetailsSection";
 import { VehicleEntry, LocationContact, PostVehicleFormData } from "@/types/vehicle";
 import { ConditionReport } from "@/types/conditionReport";
-import { supabase } from "@/integrations/supabase/client";
-import { createLoad } from "@/services/loadService";
+import { createLoad, updateLoadStatus } from "@/services/loadService";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -89,7 +87,6 @@ const createEmptyFormData = (): PostVehicleFormData => ({
 const Shipping = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const shipperId = useShipperId();
   const { data: apiVehicles = [], isLoading: loadsLoading } = useShipperLoads(shipperId);
@@ -138,7 +135,7 @@ const Shipping = () => {
   const [isAutoMatchingOpen, setIsAutoMatchingOpen] = useState(false);
   const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
   const [currentLeadPrice, setCurrentLeadPrice] = useState<number>(0);
-  const [currentPickupCoords, setCurrentPickupCoords] = useState<{ lat: number; lng: number }>({ lat: 36.29, lng: 6.73 });
+  const [currentPickupCoords, setCurrentPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [currentDeliveryCoords, setCurrentDeliveryCoords] = useState<{ lat: number; lng: number } | null>(null);
   
   // History Modal state
@@ -166,40 +163,6 @@ const Shipping = () => {
     setFormData((prev) => ({
       ...prev,
       deliveryContact: { ...prev.deliveryContact, [field]: value },
-    }));
-  };
-
-  // Add vehicle from inventory dropdown
-  const handleAddFromInventory = (inventoryVehicle: {
-    id: string;
-    vin: string;
-    year: string;
-    make: string;
-    model: string;
-    type: string;
-    color: string;
-  }) => {
-    const vehicle: VehicleEntry = {
-      id: crypto.randomUUID(),
-      vin: inventoryVehicle.vin,
-      year: inventoryVehicle.year,
-      make: inventoryVehicle.make,
-      model: inventoryVehicle.model,
-      type: inventoryVehicle.type,
-      color: inventoryVehicle.color,
-      condition: {
-        runs: true,
-        rolls: true,
-        starts: true,
-        damaged: false,
-      },
-      conditionNotes: "",
-      conditionPhotos: [],
-    };
-    
-    setFormData((prev) => ({
-      ...prev,
-      vehicles: [...prev.vehicles, vehicle],
     }));
   };
 
@@ -319,11 +282,13 @@ const Shipping = () => {
       if (lead) {
         setCurrentLeadId(lead.id);
         setCurrentLeadPrice(price);
-        if (formData.pickupCoordinates.latitude && formData.pickupCoordinates.longitude) {
+        if (formData.pickupCoordinates.latitude != null && formData.pickupCoordinates.longitude != null) {
           setCurrentPickupCoords({
             lat: formData.pickupCoordinates.latitude,
             lng: formData.pickupCoordinates.longitude,
           });
+        } else {
+          setCurrentPickupCoords(null);
         }
         setIsAutoMatchingOpen(true);
       }
@@ -650,29 +615,31 @@ const Shipping = () => {
             setIsShipmentDocsOpen(true);
           }}
           onStatusChange={async (v, newStatus) => {
-            const previousStatus = v.status;
-            setVehicles(prev => prev.map(vehicle => 
-              vehicle.id === v.id ? { ...vehicle, status: newStatus } : vehicle
-            ));
-            
-            // Log the status change to activity_log
+            const mapToBackendStatus = (s: Vehicle["status"]): string => {
+              if (s === "picked_up") return "in-transit";
+              if (s === "delivered") return "completed";
+              if (s === "canceled") return "cancelled";
+              return "open";
+            };
+            const backendStatus = mapToBackendStatus(newStatus);
             try {
-              await supabase.from('activity_log').insert({
-                lead_id: v.id,
-                action_type: 'status_change',
-                previous_value: previousStatus,
-                new_value: newStatus,
-                performed_by: user?.email ?? "Shipper",
-                notes: `Status changed from "${previousStatus}" to "${newStatus}"`,
+              await updateLoadStatus(v.id, backendStatus);
+              queryClient.invalidateQueries({ queryKey: ["shipper-loads"] });
+              setVehicles(prev => prev.map(vehicle =>
+                vehicle.id === v.id ? { ...vehicle, status: newStatus } : vehicle
+              ));
+              toast({
+                title: "Status Updated",
+                description: `${v.listingId} status changed to ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
               });
             } catch (err) {
-              console.error('Error logging activity:', err);
+              console.error("Error updating status:", err);
+              toast({
+                title: "Error",
+                description: "Failed to update status. Please try again.",
+                variant: "destructive",
+              });
             }
-            
-            toast({
-              title: "Status Updated",
-              description: `${v.listingId} status changed to ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
-            });
           }}
           onToggleActive={(v, isActive) => {
             setVehicles(prev => prev.map(vehicle => {
@@ -823,7 +790,6 @@ const Shipping = () => {
                 ) : (
                   <VehicleSelector
                     selectedVehicles={formData.vehicles}
-                    onAddFromInventory={handleAddFromInventory}
                     onRemoveVehicle={removeVehicle}
                     onAddNewVehicle={handleAddNewVehicle}
                   />
@@ -918,8 +884,8 @@ const Shipping = () => {
           onOpenChange={setIsAutoMatchingOpen}
           leadId={currentLeadId}
           initialPrice={currentLeadPrice}
-          pickupLatitude={currentPickupCoords.lat}
-          pickupLongitude={currentPickupCoords.lng}
+          pickupLatitude={currentPickupCoords?.lat}
+          pickupLongitude={currentPickupCoords?.lng}
           deliveryLatitude={currentDeliveryCoords?.lat}
           deliveryLongitude={currentDeliveryCoords?.lng}
         />

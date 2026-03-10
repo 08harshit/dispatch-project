@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Home, Truck, FileText, Settings, LogOut, BarChart3, MessageSquare, ChevronRight, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useSidebarState } from "@/hooks/use-sidebar-state";
+import { useAuth } from "@/hooks/useAuth";
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -77,14 +78,21 @@ const NavItem = ({ icon, label, to, active, collapsed, badge }: NavItemProps) =>
 
 const Sidebar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
   const currentPath = location.pathname;
   const { isCollapsed, toggleCollapsed } = useSidebarState();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/landing", { replace: true });
+  };
 
   const navItems: { id: string; label: string; icon: React.ReactNode; path: string; badge?: number }[] = [
     { id: "home", label: "Home", icon: <Home size={20} />, path: "/" },
     { id: "shipping", label: "Shipping", icon: <Truck size={20} />, path: "/shipping" },
     { id: "accounting", label: "Accounting", icon: <FileText size={20} />, path: "/accounting" },
-    { id: "communication", label: "Communication", icon: <MessageSquare size={20} />, path: "/communication", badge: 6 },
+    { id: "communication", label: "Communication", icon: <MessageSquare size={20} />, path: "/communication" },
     { id: "analytics", label: "Analytics", icon: <BarChart3 size={20} />, path: "/analytics" },
   ];
 
@@ -159,7 +167,7 @@ const Sidebar = () => {
           collapsed={isCollapsed}
         />
         <button
-          onClick={() => console.log("Logout clicked")}
+          onClick={handleLogout}
           className={cn(
             "group relative flex items-center gap-3.5 w-full px-3 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 text-sidebar-muted hover:text-destructive",
             isCollapsed && "justify-center px-2.5"

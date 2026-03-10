@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, apiPatch } from "./api";
 
 export interface LoadListItem {
   id: string;
@@ -70,6 +70,11 @@ export interface Load {
 
 export async function createLoad(payload: CreateLoadPayload): Promise<Load> {
   const res = await apiPost<Load>("/loads", payload);
+  return res.data as Load;
+}
+
+export async function updateLoadStatus(loadId: string, status: string): Promise<Load> {
+  const res = await apiPatch<Load>(`/loads/${loadId}/status`, { status });
   return res.data as Load;
 }
 
