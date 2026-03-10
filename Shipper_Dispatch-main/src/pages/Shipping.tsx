@@ -18,16 +18,17 @@ import ConditionReportModal from "@/components/shipping/ConditionReportModal";
 import ShipmentDocsModal from "@/components/shipping/ShipmentDocsModal";
 import ColumnFiltersBar, { ColumnFilters } from "@/components/shipping/ColumnFiltersBar";
 import { Button } from "@/components/ui/button";
-import { mockVehicles as initialMockVehicles } from "@/data/mockVehicles";
 import { useToast } from "@/hooks/use-toast";
+import { useShipperId } from "@/hooks/useShipperId";
+import { useShipperLoads } from "@/hooks/useShipperLoads";
+import { useQueryClient } from "@tanstack/react-query";
 import LocationSection from "@/components/post-vehicle/LocationSection";
 import VehicleEntryCard from "@/components/post-vehicle/VehicleEntryCard";
 import VehicleSelector from "@/components/post-vehicle/VehicleSelector";
 import ShippingDetailsSection from "@/components/post-vehicle/ShippingDetailsSection";
 import { VehicleEntry, LocationContact, PostVehicleFormData } from "@/types/vehicle";
 import { ConditionReport } from "@/types/conditionReport";
-import { supabase } from "@/integrations/supabase/client";
-import { createLoad } from "@/services/loadService";
+import { createLoad, updateLoadStatus } from "@/services/loadService";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -86,7 +87,10 @@ const createEmptyFormData = (): PostVehicleFormData => ({
 const Shipping = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialMockVehicles);
+  const queryClient = useQueryClient();
+  const shipperId = useShipperId();
+  const { data: apiVehicles = [], isLoading: loadsLoading } = useShipperLoads(shipperId);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [activeStatus, setActiveStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilterCard, setActiveFilterCard] = useState<string | null>(null);
@@ -131,7 +135,7 @@ const Shipping = () => {
   const [isAutoMatchingOpen, setIsAutoMatchingOpen] = useState(false);
   const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
   const [currentLeadPrice, setCurrentLeadPrice] = useState<number>(0);
-  const [currentPickupCoords, setCurrentPickupCoords] = useState<{ lat: number; lng: number }>({ lat: 36.29, lng: 6.73 });
+  const [currentPickupCoords, setCurrentPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [currentDeliveryCoords, setCurrentDeliveryCoords] = useState<{ lat: number; lng: number } | null>(null);
   
   // History Modal state
@@ -143,120 +147,9 @@ const Shipping = () => {
   const [isShipmentDocsOpen, setIsShipmentDocsOpen] = useState(false);
   const [shipmentDocsVehicle, setShipmentDocsVehicle] = useState<Vehicle | null>(null);
 
-  // Fetch booked leads from Supabase and merge with mock data
   useEffect(() => {
-    const fetchBookedLeads = async () => {
-      const { data: leads, error } = await supabase
-        .from('leads')
-        .select(`
-          *,
-          negotiations!inner(
-            status,
-            current_offer,
-            courier_id,
-            couriers:courier_id(name)
-          )
-        `)
-        .eq('negotiations.status', 'accepted');
-
-      if (error) {
-        console.error('Error fetching booked leads:', error);
-        return;
-      }
-
-      if (leads && leads.length > 0) {
-        // Convert leads to Vehicle format
-        const bookedVehicles: Vehicle[] = leads.map((lead) => {
-          const negotiation = lead.negotiations[0];
-          const finalPrice = negotiation?.current_offer || lead.initial_price || 0;
-          
-          // Parse address to extract city, state, zip
-          const parseAddress = (address: string) => {
-            // Simple parsing - assumes format like "City, State ZIP" or full address
-            const parts = address.split(',').map(p => p.trim());
-            const lastPart = parts[parts.length - 1] || '';
-            const stateZipMatch = lastPart.match(/([A-Z]{2})\s*(\d{5})?/);
-            
-            return {
-              city: parts[0] || address,
-              state: stateZipMatch?.[1] || '',
-              zip: stateZipMatch?.[2] || '',
-            };
-          };
-
-          const pickupParsed = parseAddress(lead.pickup_address);
-          const deliveryParsed = parseAddress(lead.delivery_address);
-
-          const mapLocationType = (type: string | null): LocationType => {
-            if (type === 'auction' || type === 'dealer' || type === 'private') {
-              return type;
-            }
-            return 'dealer';
-          };
-
-          const mapPaymentMethod = (type: string | null): PaymentMethod => {
-            if (type === 'cod' || type === 'ach' || type === 'wire' || type === 'check') {
-              return type;
-            }
-            return 'cod';
-          };
-
-          return {
-            id: lead.id,
-            listingId: lead.listing_id,
-            make: lead.vehicle_make || 'Unknown',
-            model: lead.vehicle_model || 'Unknown',
-            year: parseInt(lead.vehicle_year || '0') || new Date().getFullYear(),
-            vin: lead.vehicle_vin || '',
-            stockNumber: lead.listing_id,
-            pickupLocation: lead.pickup_address,
-            pickupCity: pickupParsed.city,
-            pickupState: pickupParsed.state,
-            pickupZip: pickupParsed.zip,
-            pickupType: mapLocationType(lead.pickup_location_type),
-            deliveryLocation: lead.delivery_address,
-            deliveryCity: deliveryParsed.city,
-            deliveryState: deliveryParsed.state,
-            deliveryZip: deliveryParsed.zip,
-            deliveryType: mapLocationType(lead.delivery_location_type),
-            pickupDate: format(new Date(), 'MM-dd-yyyy'),
-            deliveryDate: format(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), 'MM-dd-yyyy'),
-            status: 'assigned' as const,
-            isActive: true,
-            cost: finalPrice,
-            paymentMethod: mapPaymentMethod(lead.payment_type),
-          };
-        });
-
-        // Merge with mock vehicles (booked ones come first)
-        setVehicles([...bookedVehicles, ...initialMockVehicles]);
-      }
-    };
-
-    fetchBookedLeads();
-
-    // Subscribe to realtime updates for negotiations
-    const channel = supabase
-      .channel('booked-leads')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'negotiations',
-          filter: 'status=eq.accepted',
-        },
-        () => {
-          // Refetch when a negotiation is accepted
-          fetchBookedLeads();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    setVehicles(apiVehicles);
+  }, [apiVehicles]);
 
   // Post Vehicle form handlers
   const updatePickupContact = (field: keyof LocationContact, value: string) => {
@@ -270,40 +163,6 @@ const Shipping = () => {
     setFormData((prev) => ({
       ...prev,
       deliveryContact: { ...prev.deliveryContact, [field]: value },
-    }));
-  };
-
-  // Add vehicle from inventory dropdown
-  const handleAddFromInventory = (inventoryVehicle: {
-    id: string;
-    vin: string;
-    year: string;
-    make: string;
-    model: string;
-    type: string;
-    color: string;
-  }) => {
-    const vehicle: VehicleEntry = {
-      id: crypto.randomUUID(),
-      vin: inventoryVehicle.vin,
-      year: inventoryVehicle.year,
-      make: inventoryVehicle.make,
-      model: inventoryVehicle.model,
-      type: inventoryVehicle.type,
-      color: inventoryVehicle.color,
-      condition: {
-        runs: true,
-        rolls: true,
-        starts: true,
-        damaged: false,
-      },
-      conditionNotes: "",
-      conditionPhotos: [],
-    };
-    
-    setFormData((prev) => ({
-      ...prev,
-      vehicles: [...prev.vehicles, vehicle],
     }));
   };
 
@@ -418,15 +277,18 @@ const Shipping = () => {
 
       setIsPostVehicleOpen(false);
       setFormData(createEmptyFormData());
+      queryClient.invalidateQueries({ queryKey: ["shipper-loads"] });
 
       if (lead) {
         setCurrentLeadId(lead.id);
         setCurrentLeadPrice(price);
-        if (formData.pickupCoordinates.latitude && formData.pickupCoordinates.longitude) {
+        if (formData.pickupCoordinates.latitude != null && formData.pickupCoordinates.longitude != null) {
           setCurrentPickupCoords({
             lat: formData.pickupCoordinates.latitude,
             lng: formData.pickupCoordinates.longitude,
           });
+        } else {
+          setCurrentPickupCoords(null);
         }
         setIsAutoMatchingOpen(true);
       }
@@ -718,6 +580,11 @@ const Shipping = () => {
         </div>
 
         {/* Vehicle Table */}
+        {loadsLoading && shipperId ? (
+          <div className="dashboard-card py-12 text-center text-muted-foreground">
+            Loading shipments...
+          </div>
+        ) : (
         <VehicleTable
           vehicles={filteredVehicles}
           conditionReports={vehicleConditionReports}
@@ -748,29 +615,31 @@ const Shipping = () => {
             setIsShipmentDocsOpen(true);
           }}
           onStatusChange={async (v, newStatus) => {
-            const previousStatus = v.status;
-            setVehicles(prev => prev.map(vehicle => 
-              vehicle.id === v.id ? { ...vehicle, status: newStatus } : vehicle
-            ));
-            
-            // Log the status change to activity_log
+            const mapToBackendStatus = (s: Vehicle["status"]): string => {
+              if (s === "picked_up") return "in-transit";
+              if (s === "delivered") return "completed";
+              if (s === "canceled") return "cancelled";
+              return "open";
+            };
+            const backendStatus = mapToBackendStatus(newStatus);
             try {
-              await supabase.from('activity_log').insert({
-                lead_id: v.id,
-                action_type: 'status_change',
-                previous_value: previousStatus,
-                new_value: newStatus,
-                performed_by: 'Admin', // TODO: Replace with actual user name when auth is added
-                notes: `Status changed from "${previousStatus}" to "${newStatus}"`,
+              await updateLoadStatus(v.id, backendStatus);
+              queryClient.invalidateQueries({ queryKey: ["shipper-loads"] });
+              setVehicles(prev => prev.map(vehicle =>
+                vehicle.id === v.id ? { ...vehicle, status: newStatus } : vehicle
+              ));
+              toast({
+                title: "Status Updated",
+                description: `${v.listingId} status changed to ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
               });
             } catch (err) {
-              console.error('Error logging activity:', err);
+              console.error("Error updating status:", err);
+              toast({
+                title: "Error",
+                description: "Failed to update status. Please try again.",
+                variant: "destructive",
+              });
             }
-            
-            toast({
-              title: "Status Updated",
-              description: `${v.listingId} status changed to ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
-            });
           }}
           onToggleActive={(v, isActive) => {
             setVehicles(prev => prev.map(vehicle => {
@@ -786,9 +655,10 @@ const Shipping = () => {
             });
           }}
         />
+        )}
 
         {/* Empty State */}
-        {filteredVehicles.length === 0 && (
+        {!loadsLoading && filteredVehicles.length === 0 && (
           <div className="dashboard-card py-16 text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
             <div className="relative">
@@ -920,7 +790,6 @@ const Shipping = () => {
                 ) : (
                   <VehicleSelector
                     selectedVehicles={formData.vehicles}
-                    onAddFromInventory={handleAddFromInventory}
                     onRemoveVehicle={removeVehicle}
                     onAddNewVehicle={handleAddNewVehicle}
                   />
@@ -1015,8 +884,8 @@ const Shipping = () => {
           onOpenChange={setIsAutoMatchingOpen}
           leadId={currentLeadId}
           initialPrice={currentLeadPrice}
-          pickupLatitude={currentPickupCoords.lat}
-          pickupLongitude={currentPickupCoords.lng}
+          pickupLatitude={currentPickupCoords?.lat}
+          pickupLongitude={currentPickupCoords?.lng}
           deliveryLatitude={currentDeliveryCoords?.lat}
           deliveryLongitude={currentDeliveryCoords?.lng}
         />

@@ -118,7 +118,7 @@ const VehicleEntryCard = ({ vehicle, index, onUpdate, onRemove, canRemove }: Veh
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground">Year</Label>
                 <Input
-                  placeholder="2024"
+                  placeholder={new Date().getFullYear().toString()}
                   value={vehicle.year}
                   onChange={(e) => onUpdate(vehicle.id, { year: e.target.value })}
                   maxLength={4}

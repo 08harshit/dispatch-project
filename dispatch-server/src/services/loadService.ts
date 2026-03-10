@@ -124,8 +124,8 @@ export async function listLoads(
     return { data: result, pagination };
 }
 
-export async function getLoadStats(): Promise<LoadStats> {
-    return loadRepo.getStats();
+export async function getLoadStats(filters?: loadRepo.LoadFilters): Promise<LoadStats> {
+    return loadRepo.getStats(filters ?? {});
 }
 
 export async function getLoadById(id: string): Promise<LoadListItem | null> {
@@ -155,7 +155,17 @@ export async function updateLoad(id: string, payload: loadRepo.UpdateLeadPayload
 }
 
 export async function updateLoadStatus(id: string, status: string): Promise<LoadListItem> {
-    const lead = await loadRepo.update(id, { status });
+    const payload: loadRepo.UpdateLeadPayload = {};
+    if (status === "in-transit") {
+        payload.status = "open";
+        payload.is_locked = true;
+    } else if (status === "open") {
+        payload.status = "open";
+        payload.is_locked = false;
+    } else {
+        payload.status = status;
+    }
+    const lead = await loadRepo.update(id, payload);
     await historyRepo.logAction(lead.id, `Status changed to ${status}`);
     return getLoadById(lead.id) as Promise<LoadListItem>;
 }

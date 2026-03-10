@@ -61,9 +61,9 @@ const mockMessages: Record<string, Message[]> = {
 
 type TabType = "messages" | "emails" | "calls";
 
-const tabs: { id: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
-  { id: "messages", label: "Messages", icon: <MessageSquare className="h-4 w-4" />, badge: 3 },
-  { id: "emails", label: "Emails", icon: <Mail className="h-4 w-4" />, badge: 5 },
+const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  { id: "messages", label: "Messages", icon: <MessageSquare className="h-4 w-4" /> },
+  { id: "emails", label: "Emails", icon: <Mail className="h-4 w-4" /> },
   { id: "calls", label: "Calls", icon: <Phone className="h-4 w-4" /> },
 ];
 
@@ -93,16 +93,6 @@ const Communication = () => {
             >
               {tab.icon}
               {tab.label}
-              {tab.badge && tab.badge > 0 && (
-                <span className={cn(
-                  "h-5 min-w-5 flex items-center justify-center rounded-full text-[10px] font-semibold px-1.5",
-                  activeTab === tab.id
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : "bg-primary/10 text-primary"
-                )}>
-                  {tab.badge}
-                </span>
-              )}
             </button>
           ))}
         </div>

@@ -80,9 +80,11 @@ router.get("/", async (req: Request, res: Response) => {
  *     summary: Get load statistics
  *     tags: [Loads]
  */
-router.get("/stats", async (_req: Request, res: Response) => {
+router.get("/stats", async (req: Request, res: Response) => {
     try {
-        const stats = await loadService.getLoadStats();
+        const shipper_id = req.query.shipper_id as string | undefined;
+        const filters = shipper_id ? { shipper_id } : {};
+        const stats = await loadService.getLoadStats(filters);
         res.json({ success: true, data: stats });
     } catch (err: any) {
         logger.error({ err }, "Error in GET /loads/stats");

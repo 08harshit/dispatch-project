@@ -18,6 +18,7 @@ import AccountingHistoryModal from "@/components/accounting/AccountingHistoryMod
 import AccountingFiltersBar, { AccountingFilters, SortField, SortDirection } from "@/components/accounting/AccountingFiltersBar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface HistoryEvent {
   id: string;
@@ -54,6 +55,8 @@ interface PayoutTab {
 
 const Accounting = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const performedBy = user?.email ?? "Shipper";
   const [records, setRecords] = useState<AccountingRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -114,7 +117,7 @@ const Accounting = () => {
           return {
             id: r.id,
             listingId: r.listing_id,
-            vehicleYear: r.vehicle_year || '2024',
+            vehicleYear: r.vehicle_year || new Date().getFullYear().toString(),
             vehicleMake: r.vehicle_make || 'Unknown',
             vehicleModel: r.vehicle_model || 'Vehicle',
             vin: r.vin || 'N/A',
@@ -191,7 +194,7 @@ const Accounting = () => {
       await db.from('accounting_history').insert({
         record_id: data.id,
         action_type: 'created',
-        performed_by: 'Admin',
+        performed_by: performedBy,
         details: 'Record created',
       });
 
@@ -243,7 +246,7 @@ const Accounting = () => {
           action_type: 'cost_change',
           previous_value: `$${originalRecord.cost}`,
           new_value: `$${updatedRecord.cost}`,
-          performed_by: 'Admin',
+          performed_by: performedBy,
           details: 'Cost updated',
         });
       }
@@ -254,7 +257,7 @@ const Accounting = () => {
           action_type: 'status_change',
           previous_value: originalRecord.paymentMethod,
           new_value: updatedRecord.paymentMethod,
-          performed_by: 'Admin',
+          performed_by: performedBy,
           details: 'Payment method changed',
         });
       }
@@ -265,7 +268,7 @@ const Accounting = () => {
           action_type: 'payout_change',
           previous_value: originalRecord.payoutStatus,
           new_value: updatedRecord.payoutStatus,
-          performed_by: 'Admin',
+          performed_by: performedBy,
           details: 'Payout status changed',
         });
       }
@@ -274,7 +277,7 @@ const Accounting = () => {
         historyEntries.push({
           record_id: updatedRecord.id,
           action_type: 'edited',
-          performed_by: 'Admin',
+          performed_by: performedBy,
           details: 'Record edited',
         });
       }
@@ -339,7 +342,7 @@ const Accounting = () => {
         action_type: field === "payoutStatus" ? "payout_change" : field === "paymentMethod" ? "status_change" : "edited",
         previous_value: previousValue,
         new_value: value,
-        performed_by: 'Admin',
+        performed_by: performedBy,
         details: `${field === "date" ? "Date" : field === "paymentMethod" ? "Payment method" : "Payout status"} changed`,
       });
 
