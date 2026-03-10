@@ -2,8 +2,14 @@ import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
+import { resolveCourierId } from "../utils/authHelpers";
 
 const router = Router();
+
+async function getCourierContractIds(courierId: string): Promise<string[]> {
+    const { data } = await supabaseAdmin.from("contracts").select("id").eq("courier_id", courierId);
+    return (data || []).map((r: { id: string }) => r.id);
+}
 
 function getRangeDays(range: string): number {
     const map: Record<string, number> = { "7days": 7, "14days": 14, "30days": 30, "90days": 90 };
@@ -44,11 +50,31 @@ router.get("/stats", async (req: Request, res: Response) => {
         const rangeDays = getRangeDays(range);
         const from = getRangeStart(rangeDays);
 
-        const { data: trips, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from("trips")
-            .select("id, completed_at, started_at")
+            .select("id, completed_at, started_at, contract_id")
             .eq("status", "completed")
             .gte("completed_at", from);
+
+        const courierId = req.query.courier_id as string | undefined
+            || (req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null);
+        if (courierId) {
+            const contractIds = await getCourierContractIds(courierId);
+            if (contractIds.length > 0) query = query.in("contract_id", contractIds);
+            else {
+                return res.json({
+                    success: true,
+                    data: [
+                        { title: "Deliveries Today", value: "0", change: "+0%", isPositive: true, description: "vs yesterday" },
+                        { title: "On-Time Rate", value: "0%", change: "+0%", isPositive: true, description: "This period" },
+                        { title: "Avg. Transit Time", value: "0 days", change: "+0%", isPositive: true, description: "N/A" },
+                        { title: "Utilization", value: "0%", change: "+0%", isPositive: true, description: "Fleet capacity" },
+                    ],
+                });
+            }
+        }
+
+        const { data: trips, error } = await query;
 
         if (error) {
             if (isMissingTableError(error)) {
@@ -113,11 +139,21 @@ router.get("/delivery-trends", async (req: Request, res: Response) => {
         const rangeDays = getRangeDays(range);
         const from = getRangeStart(rangeDays);
 
-        const { data: trips, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from("trips")
-            .select("completed_at")
+            .select("completed_at, contract_id")
             .eq("status", "completed")
             .gte("completed_at", from);
+
+        const courierId = req.query.courier_id as string | undefined
+            || (req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null);
+        if (courierId) {
+            const contractIds = await getCourierContractIds(courierId);
+            if (contractIds.length > 0) query = query.in("contract_id", contractIds);
+            else return res.json({ success: true, data: [] });
+        }
+
+        const { data: trips, error } = await query;
 
         if (error) {
             if (isMissingTableError(error)) {

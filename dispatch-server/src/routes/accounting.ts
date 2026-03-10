@@ -2,8 +2,14 @@ import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
+import { resolveCourierId } from "../utils/authHelpers";
 
 const router = Router();
+
+async function getCourierContractIds(courierId: string): Promise<string[]> {
+    const { data } = await supabaseAdmin.from("contracts").select("id").eq("courier_id", courierId);
+    return (data || []).map((r: { id: string }) => r.id);
+}
 
 /**
  * @swagger
@@ -22,11 +28,25 @@ const router = Router();
  *       200:
  *         description: Revenue, receivables, payables, pending
  */
-router.get("/stats", async (_req: Request, res: Response) => {
+router.get("/stats", async (req: Request, res: Response) => {
     try {
-        const { data: invoices, error } = await supabaseAdmin
-            .from("invoices")
-            .select("amount, generated_at");
+        let query = supabaseAdmin.from("invoices").select("amount, generated_at");
+        const courierId = req.query.courier_id as string | undefined
+            || (req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null);
+        if (courierId) {
+            const contractIds = await getCourierContractIds(courierId);
+            if (contractIds.length > 0) query = query.in("contract_id", contractIds);
+            else return res.json({
+                success: true,
+                data: {
+                    totalRevenue: { value: "$0", change: "+0%", isPositive: true },
+                    receivables: { value: "$0", change: "+0%", isPositive: true },
+                    payables: { value: "$0", change: "+0%", isPositive: false },
+                    pending: { value: "$0", change: "+0%", isPositive: true },
+                },
+            });
+        }
+        const { data: invoices, error } = await query;
 
         if (error) {
             if (isMissingTableError(error)) {
@@ -92,9 +112,16 @@ router.get("/transactions", async (req: Request, res: Response) => {
         const { dateFrom, dateTo, type } = req.query;
         let query = supabaseAdmin
             .from("invoices")
-            .select("id, amount, generated_at, courier_name, shipper_name, load_description, start_location, end_location")
+            .select("id, amount, generated_at, courier_name, shipper_name, load_description, start_location, end_location, contract_id")
             .order("generated_at", { ascending: false });
 
+        const courierId = req.query.courier_id as string | undefined
+            || (req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null);
+        if (courierId) {
+            const contractIds = await getCourierContractIds(courierId);
+            if (contractIds.length > 0) query = query.in("contract_id", contractIds);
+            else return res.json({ success: true, data: [] });
+        }
         if (dateFrom) query = query.gte("generated_at", `${dateFrom}T00:00:00.000Z`);
         if (dateTo) query = query.lte("generated_at", `${dateTo}T23:59:59.999Z`);
 

@@ -84,9 +84,8 @@ export const BOLViewerDialog = ({ open, onOpenChange, load, scannedVin }: BOLVie
     title: false,
   };
 
-  // Mock coordinates - in production these would come from the load data
-  const pickupCoords: [number, number] = [42.2793, -71.4162]; // Framingham, MA
-  const deliveryCoords: [number, number] = [41.8781, -87.6298]; // Chicago, IL
+  const pickupCoords: [number, number] = load.pickupCoords ?? [42.2793, -71.4162];
+  const deliveryCoords: [number, number] = load.deliveryCoords ?? [41.8781, -87.6298];
 
   // Fetch route from OSRM
   useEffect(() => {

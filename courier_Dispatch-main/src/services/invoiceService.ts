@@ -1,12 +1,12 @@
 import { apiGet } from "./api";
 
 /**
- * Trip-level invoice (created by trigger on trip completion).
- * Use for "View Invoice" when a courier has completed a trip.
+ * Invoice (created by trigger on trip completion).
+ * Courier module uses contract_id and date range; no trip_id.
  */
 export interface Invoice {
   id: string;
-  trip_id: string;
+  trip_id?: string;
   contract_id: string;
   amount: number;
   generated_at: string;
@@ -19,9 +19,18 @@ export interface Invoice {
   load_description: string | null;
 }
 
-export async function fetchInvoicesByTripId(tripId: string): Promise<Invoice[]> {
-  const res = await apiGet<Invoice[]>(`/invoices?trip_id=${encodeURIComponent(tripId)}`);
-  return res.data ?? [];
+export async function fetchInvoices(params?: {
+  dateFrom?: string;
+  dateTo?: string;
+  contract_id?: string;
+}): Promise<Invoice[]> {
+  const search = new URLSearchParams();
+  if (params?.dateFrom) search.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) search.set("dateTo", params.dateTo);
+  if (params?.contract_id) search.set("contract_id", params.contract_id);
+  const qs = search.toString();
+  const res = await apiGet<Invoice[]>(`/invoices${qs ? `?${qs}` : ""}`);
+  return Array.isArray(res.data) ? res.data : [];
 }
 
 export async function fetchInvoiceById(id: string): Promise<Invoice | null> {

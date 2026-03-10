@@ -192,7 +192,7 @@ const Index = () => {
             title="Total Couriers"
             value={stats?.totalCouriers ?? 0}
             icon={Truck}
-            trend={{ value: 12, isPositive: true }}
+            trend={stats?.couriersTrend ?? undefined}
             delay={100}
             to="/couriers"
           />
@@ -200,7 +200,7 @@ const Index = () => {
             title="Total Shippers"
             value={stats?.totalShippers ?? 0}
             icon={Package}
-            trend={{ value: 8, isPositive: true }}
+            trend={stats?.shippersTrend ?? undefined}
             delay={150}
             to="/shippers"
           />
@@ -208,7 +208,7 @@ const Index = () => {
             title="Total Transactions"
             value={stats?.totalTransactions ?? 0}
             icon={ArrowLeftRight}
-            trend={{ value: 23, isPositive: true }}
+            trend={stats?.transactionsTrend ?? undefined}
             delay={200}
             to="/analytics?tab=accounting"
           />

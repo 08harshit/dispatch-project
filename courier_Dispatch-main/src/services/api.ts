@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api";
 
@@ -18,6 +19,10 @@ function assertOnline(): void {
 let authRedirectPending = false;
 
 function handleResponseError(res: Response, data: { error?: string }): never {
+  if (res.status === 429) {
+    toast.error("Too many requests. Please wait a moment and try again.");
+    throw new Error("Rate limit exceeded");
+  }
   if (res.status === 401) {
     if (!authRedirectPending) {
       authRedirectPending = true;

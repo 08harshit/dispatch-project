@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
+import { resolveCourierId } from "../utils/authHelpers";
 
 const router = Router();
 
@@ -11,6 +12,72 @@ const router = Router();
  *   name: Dashboard
  *   description: Dashboard aggregated data
  */
+
+/**
+ * @swagger
+ * /dashboard/courier-overview:
+ *   get:
+ *     summary: Get courier-scoped dashboard data (contracts, stats, recent activity)
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: Courier dashboard data
+ */
+router.get("/courier-overview", async (req: Request, res: Response) => {
+    try {
+        const courierId = req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null;
+        if (!courierId) {
+            return res.json({
+                success: true,
+                data: {
+                    contracts: [],
+                    stats: { assignedCount: 0, revenue: "$0" },
+                    recentActivity: [],
+                },
+            });
+        }
+        const [contractsRes, recentRes] = await Promise.all([
+            supabaseAdmin.from("contracts").select("id, status, amount, created_at, start_location, end_location, lead_id, leads(id, listing_id, pickup_address, delivery_address, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, status)").eq("courier_id", courierId).in("status", ["signed", "active", "completed"]).order("created_at", { ascending: false }).limit(20),
+            supabaseAdmin.from("contracts").select("id, status, created_at, couriers(name), shippers(name)").eq("courier_id", courierId).order("created_at", { ascending: false }).limit(10),
+        ]);
+        const contracts = contractsRes.data || [];
+        const contractIds = contracts.map((c: { id: string }) => c.id);
+        let totalRevenue = 0;
+        if (contractIds.length > 0) {
+            const { data: invData } = await supabaseAdmin.from("invoices").select("amount").in("contract_id", contractIds);
+            totalRevenue = (invData || []).reduce((s: number, i: { amount: number }) => s + (parseFloat(String(i.amount)) || 0), 0);
+        }
+        const recentActivity = (recentRes.data || []).map((c: any) => {
+            const courierName = Array.isArray(c.couriers) ? c.couriers[0]?.name : c.couriers?.name;
+            const shipperName = Array.isArray(c.shippers) ? c.shippers[0]?.name : c.shippers?.name;
+            return {
+                id: c.id,
+                entity: shipperName || courierName || "Unknown",
+                entityType: "shipper" as const,
+                action: "Contract " + (c.status === "signed" || c.status === "active" ? "signed" : c.status),
+                status: c.status === "completed" ? "completed" : c.status === "cancelled" ? "failed" : "pending",
+                date: c.created_at ? new Date(c.created_at).toLocaleDateString() : "",
+            };
+        });
+        res.json({
+            success: true,
+            data: {
+                contracts,
+                stats: {
+                    assignedCount: contracts.filter((c: { status: string }) => c.status === "signed" || c.status === "active").length,
+                    revenue: `$${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                },
+                recentActivity,
+            },
+        });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /dashboard/courier-overview");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
+});
 
 /**
  * @swagger
@@ -32,6 +99,9 @@ router.get("/overview", async (_req: Request, res: Response) => {
         couriersNonCompliant: 0,
         shippersCompliant: 0,
         shippersNonCompliant: 0,
+        couriersTrend: null as TrendResult,
+        shippersTrend: null as TrendResult,
+        transactionsTrend: null as TrendResult,
     };
     try {
         const [statsRes, recentRes, alertsRes] = await Promise.all([
@@ -57,6 +127,18 @@ router.get("/overview", async (_req: Request, res: Response) => {
     }
 });
 
+type TrendResult = { value: number; isPositive: boolean } | null;
+
+function computeTrend(current: number, previous: number): TrendResult {
+    if (previous === 0) {
+        if (current === 0) return null;
+        return { value: 100, isPositive: true };
+    }
+    const pct = Math.round(((current - previous) / previous) * 100);
+    if (pct === 0) return null;
+    return { value: Math.abs(pct), isPositive: pct > 0 };
+}
+
 async function fetchStats(): Promise<{
     totalCouriers: number;
     totalShippers: number;
@@ -66,6 +148,9 @@ async function fetchStats(): Promise<{
     couriersNonCompliant: number;
     shippersCompliant: number;
     shippersNonCompliant: number;
+    couriersTrend: TrendResult;
+    shippersTrend: TrendResult;
+    transactionsTrend: TrendResult;
 } | null> {
     const empty = {
         totalCouriers: 0,
@@ -76,13 +161,41 @@ async function fetchStats(): Promise<{
         couriersNonCompliant: 0,
         shippersCompliant: 0,
         shippersNonCompliant: 0,
+        couriersTrend: null as TrendResult,
+        shippersTrend: null as TrendResult,
+        transactionsTrend: null as TrendResult,
     };
-    const [totalCouriersRes, totalShippersRes, totalInvoicesRes, couriersCompliantRes, shippersCompliantRes] = await Promise.all([
+    const now = new Date();
+    const nowMinus30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const nowMinus60 = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const currentFrom = nowMinus30.toISOString();
+    const previousFrom = nowMinus60.toISOString();
+    const previousTo = nowMinus30.toISOString();
+
+    const [
+        totalCouriersRes,
+        totalShippersRes,
+        totalInvoicesRes,
+        couriersCompliantRes,
+        shippersCompliantRes,
+        couriersCurrentRes,
+        couriersPreviousRes,
+        shippersCurrentRes,
+        shippersPreviousRes,
+        invoicesCurrentRes,
+        invoicesPreviousRes,
+    ] = await Promise.all([
         supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null),
         supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null),
         supabaseAdmin.from("invoices").select("id", { count: "exact", head: true }),
         supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).eq("compliance", "compliant").is("deleted_at", null),
         supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).eq("compliance", "compliant").is("deleted_at", null),
+        supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null).gte("created_at", currentFrom),
+        supabaseAdmin.from("couriers").select("id", { count: "exact", head: true }).is("deleted_at", null).gte("created_at", previousFrom).lt("created_at", previousTo),
+        supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null).gte("created_at", currentFrom),
+        supabaseAdmin.from("shippers").select("id", { count: "exact", head: true }).is("deleted_at", null).gte("created_at", previousFrom).lt("created_at", previousTo),
+        supabaseAdmin.from("invoices").select("id", { count: "exact", head: true }).gte("created_at", currentFrom),
+        supabaseAdmin.from("invoices").select("id", { count: "exact", head: true }).gte("created_at", previousFrom).lt("created_at", previousTo),
     ]);
     if (totalCouriersRes.error && isMissingTableError(totalCouriersRes.error)) return empty;
     if (totalCouriersRes.error) throw totalCouriersRes.error;
@@ -91,6 +204,14 @@ async function fetchStats(): Promise<{
     const totalTransactions = totalInvoicesRes.count ?? 0;
     const couriersCompliant = couriersCompliantRes.count ?? 0;
     const shippersCompliant = shippersCompliantRes.count ?? 0;
+
+    const couriersCurrent = couriersCurrentRes.error ? 0 : (couriersCurrentRes.count ?? 0);
+    const couriersPrevious = couriersPreviousRes.error ? 0 : (couriersPreviousRes.count ?? 0);
+    const shippersCurrent = shippersCurrentRes.error ? 0 : (shippersCurrentRes.count ?? 0);
+    const shippersPrevious = shippersPreviousRes.error ? 0 : (shippersPreviousRes.count ?? 0);
+    const invoicesCurrent = invoicesCurrentRes.error ? 0 : (invoicesCurrentRes.count ?? 0);
+    const invoicesPrevious = invoicesPreviousRes.error ? 0 : (invoicesPreviousRes.count ?? 0);
+
     return {
         ...empty,
         totalCouriers,
@@ -100,6 +221,9 @@ async function fetchStats(): Promise<{
         couriersNonCompliant: totalCouriers - couriersCompliant,
         shippersCompliant,
         shippersNonCompliant: totalShippers - shippersCompliant,
+        couriersTrend: computeTrend(couriersCurrent, couriersPrevious),
+        shippersTrend: computeTrend(shippersCurrent, shippersPrevious),
+        transactionsTrend: computeTrend(invoicesCurrent, invoicesPrevious),
     };
 }
 

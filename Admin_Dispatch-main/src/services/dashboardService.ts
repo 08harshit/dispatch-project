@@ -15,6 +15,9 @@ export interface DashboardStats {
     couriersNonCompliant: number;
     shippersCompliant: number;
     shippersNonCompliant: number;
+    couriersTrend?: { value: number; isPositive: boolean } | null;
+    shippersTrend?: { value: number; isPositive: boolean } | null;
+    transactionsTrend?: { value: number; isPositive: boolean } | null;
 }
 
 export interface RecentActivityItem {
@@ -47,6 +50,9 @@ export async function fetchDashboardOverview(): Promise<DashboardOverview> {
                 couriersNonCompliant: 0,
                 shippersCompliant: 0,
                 shippersNonCompliant: 0,
+                couriersTrend: null,
+                shippersTrend: null,
+                transactionsTrend: null,
             },
             recentActivity: [],
             alerts: [],
@@ -67,6 +73,9 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
             couriersNonCompliant: 0,
             shippersCompliant: 0,
             shippersNonCompliant: 0,
+            couriersTrend: null,
+            shippersTrend: null,
+            transactionsTrend: null,
         };
     }
     return res.data;

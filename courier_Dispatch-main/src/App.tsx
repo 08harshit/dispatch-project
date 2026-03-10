@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { OfflineOverlay } from "@/components/OfflineOverlay";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
@@ -18,6 +20,10 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { CommunicationPage } from "./pages/CommunicationPage";
 import { SetupPage } from "./pages/SetupPage";
 import NotFound from "./pages/NotFound";
+import { courierDashboardKeys } from "@/hooks/queries/useCourierDashboard";
+import { contractKeys } from "@/hooks/queries/useCourierContracts";
+import { fetchCourierOverview } from "@/services/courierDashboardService";
+import { fetchContracts } from "@/services/contractsService";
 
 function AuthErrorHandler() {
   const location = useLocation();
@@ -46,10 +52,33 @@ function AuthErrorHandler() {
   return null;
 }
 
+function GlobalPrefetcher() {
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (session) {
+      queryClient.prefetchQuery({
+        queryKey: courierDashboardKeys.overview(),
+        queryFn: fetchCourierOverview,
+        staleTime: 5 * 60 * 1000,
+      });
+      queryClient.prefetchQuery({
+        queryKey: contractKeys.list("signed,active,completed"),
+        queryFn: () => fetchContracts({ status: "signed,active,completed" }),
+        staleTime: 5 * 60 * 1000,
+      });
+    }
+  }, [session, queryClient]);
+
+  return null;
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (failureCount, error) => {
+      gcTime: 10 * 60 * 1000,
+      retry: (failureCount) => {
         if (typeof navigator !== "undefined" && !navigator.onLine) return false;
         return failureCount < 3;
       },
@@ -74,17 +103,16 @@ function useNetworkStatus() {
   return isOnline;
 }
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/auth" replace />;
-  return <>{children}</>;
-};
-
 const PublicHome = () => {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  if (user) return <Navigate to="/dashboard" replace />;
+  const { session, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+  if (session) return <Navigate to="/dashboard" replace />;
   return <LandingPage />;
 };
 
@@ -98,6 +126,7 @@ function AppContent() {
         <Sonner />
         <BrowserRouter>
           <AuthErrorHandler />
+          <GlobalPrefetcher />
           <Routes>
             <Route path="/" element={<PublicHome />} />
             <Route path="/auth" element={<AuthPage />} />
@@ -121,7 +150,9 @@ function AppContent() {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AppContent />
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
   </QueryClientProvider>
 );
 

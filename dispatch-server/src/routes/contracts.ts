@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
+import { resolveCourierId } from "../utils/authHelpers";
 
 const router = Router();
 
@@ -34,7 +35,11 @@ const router = Router();
  */
 router.get("/", async (req: Request, res: Response) => {
     try {
-        const { courier_id, shipper_id, status } = req.query;
+        let { courier_id, shipper_id, status } = req.query;
+        if (!courier_id && req.user?.id) {
+            const resolved = await resolveCourierId(supabaseAdmin, req.user.id);
+            if (resolved) courier_id = resolved;
+        }
         let query = supabaseAdmin
             .from("contracts")
             .select("*, leads(id, listing_id, pickup_address, delivery_address, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, status), couriers(id, name), shippers(id, name)")
@@ -42,7 +47,11 @@ router.get("/", async (req: Request, res: Response) => {
 
         if (courier_id) query = query.eq("courier_id", courier_id as string);
         if (shipper_id) query = query.eq("shipper_id", shipper_id as string);
-        if (status) query = query.eq("status", status as string);
+        if (status) {
+            const statuses = (status as string).split(",").map((s) => s.trim()).filter(Boolean);
+            if (statuses.length > 1) query = query.in("status", statuses);
+            else query = query.eq("status", status as string);
+        }
 
         const { data: rows, error } = await query;
 
