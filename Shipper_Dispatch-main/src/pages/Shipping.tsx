@@ -18,8 +18,11 @@ import ConditionReportModal from "@/components/shipping/ConditionReportModal";
 import ShipmentDocsModal from "@/components/shipping/ShipmentDocsModal";
 import ColumnFiltersBar, { ColumnFilters } from "@/components/shipping/ColumnFiltersBar";
 import { Button } from "@/components/ui/button";
-import { mockVehicles as initialMockVehicles } from "@/data/mockVehicles";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useShipperId } from "@/hooks/useShipperId";
+import { useShipperLoads } from "@/hooks/useShipperLoads";
+import { useQueryClient } from "@tanstack/react-query";
 import LocationSection from "@/components/post-vehicle/LocationSection";
 import VehicleEntryCard from "@/components/post-vehicle/VehicleEntryCard";
 import VehicleSelector from "@/components/post-vehicle/VehicleSelector";
@@ -86,7 +89,11 @@ const createEmptyFormData = (): PostVehicleFormData => ({
 const Shipping = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialMockVehicles);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const shipperId = useShipperId();
+  const { data: apiVehicles = [], isLoading: loadsLoading } = useShipperLoads(shipperId);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [activeStatus, setActiveStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilterCard, setActiveFilterCard] = useState<string | null>(null);
@@ -143,120 +150,9 @@ const Shipping = () => {
   const [isShipmentDocsOpen, setIsShipmentDocsOpen] = useState(false);
   const [shipmentDocsVehicle, setShipmentDocsVehicle] = useState<Vehicle | null>(null);
 
-  // Fetch booked leads from Supabase and merge with mock data
   useEffect(() => {
-    const fetchBookedLeads = async () => {
-      const { data: leads, error } = await supabase
-        .from('leads')
-        .select(`
-          *,
-          negotiations!inner(
-            status,
-            current_offer,
-            courier_id,
-            couriers:courier_id(name)
-          )
-        `)
-        .eq('negotiations.status', 'accepted');
-
-      if (error) {
-        console.error('Error fetching booked leads:', error);
-        return;
-      }
-
-      if (leads && leads.length > 0) {
-        // Convert leads to Vehicle format
-        const bookedVehicles: Vehicle[] = leads.map((lead) => {
-          const negotiation = lead.negotiations[0];
-          const finalPrice = negotiation?.current_offer || lead.initial_price || 0;
-          
-          // Parse address to extract city, state, zip
-          const parseAddress = (address: string) => {
-            // Simple parsing - assumes format like "City, State ZIP" or full address
-            const parts = address.split(',').map(p => p.trim());
-            const lastPart = parts[parts.length - 1] || '';
-            const stateZipMatch = lastPart.match(/([A-Z]{2})\s*(\d{5})?/);
-            
-            return {
-              city: parts[0] || address,
-              state: stateZipMatch?.[1] || '',
-              zip: stateZipMatch?.[2] || '',
-            };
-          };
-
-          const pickupParsed = parseAddress(lead.pickup_address);
-          const deliveryParsed = parseAddress(lead.delivery_address);
-
-          const mapLocationType = (type: string | null): LocationType => {
-            if (type === 'auction' || type === 'dealer' || type === 'private') {
-              return type;
-            }
-            return 'dealer';
-          };
-
-          const mapPaymentMethod = (type: string | null): PaymentMethod => {
-            if (type === 'cod' || type === 'ach' || type === 'wire' || type === 'check') {
-              return type;
-            }
-            return 'cod';
-          };
-
-          return {
-            id: lead.id,
-            listingId: lead.listing_id,
-            make: lead.vehicle_make || 'Unknown',
-            model: lead.vehicle_model || 'Unknown',
-            year: parseInt(lead.vehicle_year || '0') || new Date().getFullYear(),
-            vin: lead.vehicle_vin || '',
-            stockNumber: lead.listing_id,
-            pickupLocation: lead.pickup_address,
-            pickupCity: pickupParsed.city,
-            pickupState: pickupParsed.state,
-            pickupZip: pickupParsed.zip,
-            pickupType: mapLocationType(lead.pickup_location_type),
-            deliveryLocation: lead.delivery_address,
-            deliveryCity: deliveryParsed.city,
-            deliveryState: deliveryParsed.state,
-            deliveryZip: deliveryParsed.zip,
-            deliveryType: mapLocationType(lead.delivery_location_type),
-            pickupDate: format(new Date(), 'MM-dd-yyyy'),
-            deliveryDate: format(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), 'MM-dd-yyyy'),
-            status: 'assigned' as const,
-            isActive: true,
-            cost: finalPrice,
-            paymentMethod: mapPaymentMethod(lead.payment_type),
-          };
-        });
-
-        // Merge with mock vehicles (booked ones come first)
-        setVehicles([...bookedVehicles, ...initialMockVehicles]);
-      }
-    };
-
-    fetchBookedLeads();
-
-    // Subscribe to realtime updates for negotiations
-    const channel = supabase
-      .channel('booked-leads')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'negotiations',
-          filter: 'status=eq.accepted',
-        },
-        () => {
-          // Refetch when a negotiation is accepted
-          fetchBookedLeads();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    setVehicles(apiVehicles);
+  }, [apiVehicles]);
 
   // Post Vehicle form handlers
   const updatePickupContact = (field: keyof LocationContact, value: string) => {
@@ -418,6 +314,7 @@ const Shipping = () => {
 
       setIsPostVehicleOpen(false);
       setFormData(createEmptyFormData());
+      queryClient.invalidateQueries({ queryKey: ["shipper-loads"] });
 
       if (lead) {
         setCurrentLeadId(lead.id);
@@ -718,6 +615,11 @@ const Shipping = () => {
         </div>
 
         {/* Vehicle Table */}
+        {loadsLoading && shipperId ? (
+          <div className="dashboard-card py-12 text-center text-muted-foreground">
+            Loading shipments...
+          </div>
+        ) : (
         <VehicleTable
           vehicles={filteredVehicles}
           conditionReports={vehicleConditionReports}
@@ -760,7 +662,7 @@ const Shipping = () => {
                 action_type: 'status_change',
                 previous_value: previousStatus,
                 new_value: newStatus,
-                performed_by: 'Admin', // TODO: Replace with actual user name when auth is added
+                performed_by: user?.email ?? "Shipper",
                 notes: `Status changed from "${previousStatus}" to "${newStatus}"`,
               });
             } catch (err) {
@@ -786,9 +688,10 @@ const Shipping = () => {
             });
           }}
         />
+        )}
 
         {/* Empty State */}
-        {filteredVehicles.length === 0 && (
+        {!loadsLoading && filteredVehicles.length === 0 && (
           <div className="dashboard-card py-16 text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
             <div className="relative">

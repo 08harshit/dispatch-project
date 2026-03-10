@@ -124,8 +124,8 @@ export async function listLoads(
     return { data: result, pagination };
 }
 
-export async function getLoadStats(): Promise<LoadStats> {
-    return loadRepo.getStats();
+export async function getLoadStats(filters?: loadRepo.LoadFilters): Promise<LoadStats> {
+    return loadRepo.getStats(filters ?? {});
 }
 
 export async function getLoadById(id: string): Promise<LoadListItem | null> {

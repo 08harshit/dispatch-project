@@ -1,17 +1,19 @@
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { Package, DollarSign, Users, Clock, Truck, FileText, BarChart3, ArrowUpRight, Sparkles, ChevronRight } from "lucide-react";
+import { Package, DollarSign, Clock, Truck, BarChart3, ArrowUpRight, Sparkles, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
+import { useShipperDashboard } from "@/hooks/useShipperDashboard";
 
 const Home = () => {
   const currentDate = format(new Date(), "EEE, MMM d");
+  const { data: overview } = useShipperDashboard();
 
   const stats = [
-    { label: "Active Shipments", value: "24", trend: "+12%", icon: Package, positive: true, path: "/shipping" },
-    { label: "Spends", value: "$45,280", trend: "+8%", icon: DollarSign, positive: true, path: "/accounting" },
-    { label: "Total Shipment", value: "156", trend: "+5%", icon: Truck, positive: true, path: "/shipping" },
-    { label: "On-Time Rate", value: "94.2%", trend: "+2%", icon: Clock, positive: true, path: "/analytics" },
+    { label: "Active Shipments", value: overview?.activeShipments?.toString() ?? "-", trend: "+0%", icon: Package, positive: true, path: "/shipping" },
+    { label: "Spends", value: overview?.spends ?? "-", trend: "+0%", icon: DollarSign, positive: true, path: "/accounting" },
+    { label: "Total Shipment", value: overview?.totalShipment?.toString() ?? "-", trend: "+0%", icon: Truck, positive: true, path: "/shipping" },
+    { label: "On-Time Rate", value: overview?.onTimeRate ?? "-", trend: "+0%", icon: Clock, positive: true, path: "/analytics" },
   ];
 
   const quickActions = [
@@ -20,32 +22,16 @@ const Home = () => {
     { label: "Analytics", description: "Performance insights", icon: BarChart3, path: "/analytics" },
   ];
 
-  const recentActivity = [
-    { 
-      type: "delivered", 
-      message: "Shipment #SHP-024 delivered to Miami, FL", 
-      time: "5 min ago",
-      icon: Package
-    },
-    { 
-      type: "payment", 
-      message: "Payment received for Shipment #SHP-019", 
-      time: "12 min ago",
-      icon: DollarSign
-    },
-    { 
-      type: "request", 
-      message: "New shipment request from AutoMax", 
-      time: "28 min ago",
-      icon: Sparkles
-    },
-    { 
-      type: "transit", 
-      message: "Shipment #SHP-022 in transit to Dallas", 
-      time: "1 hr ago",
-      icon: Truck
-    },
-  ];
+  const recentActivity = (overview?.recentActivity?.length ?? 0) > 0
+    ? overview!.recentActivity.map((a) => ({
+        type: a.type,
+        message: a.message,
+        time: a.time,
+        icon: a.type === "delivered" ? Package : a.type === "transit" ? Truck : Sparkles,
+      }))
+    : [
+        { type: "empty", message: "No recent activity yet", time: "", icon: Package },
+      ];
 
   const getActivityIconColor = (type: string) => {
     switch (type) {

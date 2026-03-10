@@ -2,7 +2,8 @@ import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { logger } from "../utils/logger";
 import { isMissingTableError } from "../utils/dbError";
-import { resolveCourierId } from "../utils/authHelpers";
+import { resolveCourierId, resolveShipperId } from "../utils/authHelpers";
+import * as loadService from "../services/loadService";
 
 const router = Router();
 
@@ -72,6 +73,75 @@ router.get("/courier-overview", async (req: Request, res: Response) => {
         });
     } catch (err: unknown) {
         logger.error({ err }, "Error in GET /dashboard/courier-overview");
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /dashboard/shipper-overview:
+ *   get:
+ *     summary: Get shipper-scoped dashboard data (loads stats, spends, recent activity)
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: Shipper dashboard data
+ */
+router.get("/shipper-overview", async (req: Request, res: Response) => {
+    try {
+        const shipperId = req.user?.id ? await resolveShipperId(supabaseAdmin, req.user.id) : null;
+        if (!shipperId) {
+            return res.json({
+                success: true,
+                data: {
+                    activeShipments: 0,
+                    totalShipment: 0,
+                    spends: "$0",
+                    onTimeRate: "0%",
+                    recentActivity: [],
+                },
+            });
+        }
+        const [loadStatsRes, contractsRes] = await Promise.all([
+            loadService.getLoadStats({ shipper_id: shipperId }),
+            supabaseAdmin.from("contracts").select("id, status, created_at, leads(listing_id, pickup_address, delivery_address)").eq("shipper_id", shipperId).order("created_at", { ascending: false }).limit(10),
+        ]);
+        const contracts = contractsRes.data || [];
+        const contractIds = contracts.map((c: { id: string }) => c.id);
+        let totalSpends = 0;
+        if (contractIds.length > 0) {
+            const { data: invData } = await supabaseAdmin.from("invoices").select("amount").in("contract_id", contractIds);
+            totalSpends = (invData || []).reduce((s: number, i: { amount: number }) => s + (parseFloat(String(i.amount)) || 0), 0);
+        }
+        const activeShipments = (loadStatsRes.pending ?? 0) + (loadStatsRes.inTransit ?? 0);
+        const total = loadStatsRes.total ?? 0;
+        const delivered = loadStatsRes.delivered ?? 0;
+        const onTimeRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
+        const recentActivity = contracts.slice(0, 5).map((c: any) => {
+            const lead = Array.isArray(c.leads) ? c.leads[0] : c.leads;
+            const route = lead ? `${lead.pickup_address || "?"} to ${lead.delivery_address || "?"}` : "";
+            return {
+                type: c.status === "completed" ? "delivered" : "transit",
+                message: c.status === "completed" ? `Shipment delivered to ${route}` : `Shipment in transit to ${route}`,
+                time: c.created_at ? formatRelativeTime(c.created_at) : "",
+                icon: "Package",
+            };
+        });
+        res.json({
+            success: true,
+            data: {
+                activeShipments,
+                totalShipment: total,
+                spends: `$${totalSpends.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                onTimeRate: `${onTimeRate}%`,
+                recentActivity,
+            },
+        });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /dashboard/shipper-overview");
         res.status(500).json({
             success: false,
             error: err instanceof Error ? err.message : "Unknown error",

@@ -119,27 +119,27 @@ export async function update(id: string, payload: UpdateLeadPayload): Promise<Le
     return data as LeadRow;
 }
 
-export async function getStats() {
+export async function getStats(filters: LoadFilters = {}) {
+    const base = () => {
+        let q = getTable("leads").select("id", { count: "exact", head: true });
+        if (filters.shipper_id) q = q.eq("shipper_id", filters.shipper_id);
+        if (filters.dateFrom) q = q.gte("created_at", `${filters.dateFrom}T00:00:00.000Z`);
+        if (filters.dateTo) q = q.lte("created_at", `${filters.dateTo}T23:59:59.999Z`);
+        return q;
+    };
     const [totalRes, pendingRes, cancelledRes, inTransitRes, deliveredRes] = await Promise.all([
-        getTable("leads").select("id", { count: "exact", head: true }),
-        getTable("leads").select("id", { count: "exact", head: true }).eq("status", "open"),
-        getTable("leads").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
-        getTable("trips").select("id", { count: "exact", head: true }).eq("status", "in_progress"),
-        getTable("trips").select("id", { count: "exact", head: true }).eq("status", "completed"),
+        base(),
+        base().eq("status", "open"),
+        base().eq("status", "cancelled"),
+        base().eq("is_locked", true),
+        base().eq("status", "completed"),
     ]);
-
-    const total = totalRes.count ?? 0;
-    const pending = pendingRes.count ?? 0;
-    const cancelled = cancelledRes.count ?? 0;
-    const inTransit = inTransitRes.count ?? 0;
-    const delivered = deliveredRes.count ?? 0;
-
     return {
-        total,
-        inTransit,
-        delivered,
-        pending,
-        cancelled,
-        alerts: pending,
+        total: totalRes.count ?? 0,
+        inTransit: inTransitRes.count ?? 0,
+        delivered: deliveredRes.count ?? 0,
+        pending: pendingRes.count ?? 0,
+        cancelled: cancelledRes.count ?? 0,
+        alerts: pendingRes.count ?? 0,
     };
 }
