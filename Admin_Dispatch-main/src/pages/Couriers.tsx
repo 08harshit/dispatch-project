@@ -216,9 +216,14 @@ export default function Couriers() {
   };
 
   const handleVerifyFMCSA = async (usdot: string) => {
-    setFmcsaDialog({ open: true, usdot, loading: true, result: null });
+    const trimmed = (usdot ?? "").trim();
+    if (!trimmed) {
+      toast.error("USDOT number is required to verify. Add a DOT number to this courier first.");
+      return;
+    }
+    setFmcsaDialog({ open: true, usdot: trimmed, loading: true, result: null });
     try {
-      const result = await verifyFmcsa(usdot);
+      const result = await verifyFmcsa(trimmed);
       setFmcsaDialog((prev) => ({ ...prev, loading: false, result }));
     } catch (err: unknown) {
       setFmcsaDialog((prev) => ({

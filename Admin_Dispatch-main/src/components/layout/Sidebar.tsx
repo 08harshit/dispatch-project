@@ -12,7 +12,6 @@ import {
   PackageOpen,
   TicketCheck,
   MessageCircle,
-  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,7 +24,6 @@ const navigation = [
   { name: "Communication", href: "/communication", icon: MessageCircle },
   { name: "Shippers", href: "/shippers", icon: Package },
   { name: "Loads", href: "/loads", icon: PackageOpen },
-  { name: "Trips", href: "/trips", icon: MapPin },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Tickets", href: "/tickets", icon: TicketCheck },
 ];

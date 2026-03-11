@@ -1,0 +1,827 @@
+================================================================================
+SUPABASE MIGRATIONS - COURIER & SHIPPER (Run in SQL Editor)
+================================================================================
+Run these migrations in order. Copy each section and execute in Supabase SQL Editor.
+If using a SINGLE Supabase project for the whole app: run SHIPPER first, then COURIER, then BACKEND.
+If using SEPARATE projects: run each section in its respective project.
+
+================================================================================
+PART 1: SHIPPER MIGRATIONS (Run first - creates base tables)
+================================================================================
+
+--- Migration 1: 20260122202825 - Base schema (couriers, leads, negotiations, offers) ---
+
+-- Create enum for negotiation status (idempotent - skip if exists)
+DO $$ BEGIN
+  CREATE TYPE public.negotiation_status AS ENUM (
+    'pending',
+    'negotiating',
+    'accepted',
+    'declined',
+    'expired',
+    'timeout'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Create couriers table
+CREATE TABLE public.couriers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  available_capacity INTEGER DEFAULT 1,
+  is_available BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Create leads table (vehicle shipment requests)
+CREATE TABLE public.leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id TEXT NOT NULL,
+  pickup_address TEXT NOT NULL,
+  pickup_location_type TEXT,
+  pickup_contact_name TEXT,
+  pickup_contact_phone TEXT,
+  pickup_contact_email TEXT,
+  delivery_address TEXT NOT NULL,
+  delivery_location_type TEXT,
+  delivery_contact_name TEXT,
+  delivery_contact_phone TEXT,
+  delivery_contact_email TEXT,
+  vehicle_year TEXT,
+  vehicle_make TEXT,
+  vehicle_model TEXT,
+  vehicle_vin TEXT,
+  vehicle_type TEXT,
+  vehicle_color TEXT,
+  vehicle_runs BOOLEAN DEFAULT true,
+  vehicle_rolls BOOLEAN DEFAULT true,
+  initial_price DECIMAL(10, 2),
+  payment_type TEXT,
+  notes TEXT,
+  status TEXT DEFAULT 'open',
+  is_locked BOOLEAN DEFAULT false,
+  locked_by_courier_id UUID REFERENCES public.couriers(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Create negotiations table
+CREATE TABLE public.negotiations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID REFERENCES public.leads(id) ON DELETE CASCADE NOT NULL,
+  courier_id UUID REFERENCES public.couriers(id) ON DELETE CASCADE NOT NULL,
+  status negotiation_status DEFAULT 'pending',
+  current_offer DECIMAL(10, 2),
+  counter_count INTEGER DEFAULT 0,
+  negotiation_started_at TIMESTAMP WITH TIME ZONE,
+  negotiation_expires_at TIMESTAMP WITH TIME ZONE,
+  courier_response_deadline TIMESTAMP WITH TIME ZONE,
+  shipper_response_deadline TIMESTAMP WITH TIME ZONE,
+  accepted_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  UNIQUE(lead_id, courier_id)
+);
+
+-- Create offers table (track all offers in negotiation)
+CREATE TABLE public.offers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negotiation_id UUID REFERENCES public.negotiations(id) ON DELETE CASCADE NOT NULL,
+  offered_by TEXT NOT NULL CHECK (offered_by IN ('shipper', 'courier')),
+  amount DECIMAL(10, 2) NOT NULL,
+  response TEXT CHECK (response IN ('pending', 'accepted', 'declined', 'countered', 'expired')),
+  responded_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Enable RLS on all tables
+ALTER TABLE public.couriers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.negotiations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.offers ENABLE ROW LEVEL SECURITY;
+
+-- Public read policies (for now, can be restricted later with auth)
+CREATE POLICY "Allow public read couriers" ON public.couriers FOR SELECT USING (true);
+CREATE POLICY "Allow public insert couriers" ON public.couriers FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update couriers" ON public.couriers FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public read leads" ON public.leads FOR SELECT USING (true);
+CREATE POLICY "Allow public insert leads" ON public.leads FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update leads" ON public.leads FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public read negotiations" ON public.negotiations FOR SELECT USING (true);
+CREATE POLICY "Allow public insert negotiations" ON public.negotiations FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update negotiations" ON public.negotiations FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public read offers" ON public.offers FOR SELECT USING (true);
+CREATE POLICY "Allow public insert offers" ON public.offers FOR INSERT WITH CHECK (true);
+
+-- Enable realtime for negotiations and offers
+ALTER PUBLICATION supabase_realtime ADD TABLE public.negotiations;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.offers;
+
+-- Create function to update timestamps
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+-- Create triggers for auto-updating timestamps
+CREATE TRIGGER update_couriers_updated_at
+BEFORE UPDATE ON public.couriers
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_leads_updated_at
+BEFORE UPDATE ON public.leads
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_negotiations_updated_at
+BEFORE UPDATE ON public.negotiations
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--- Migration 2: 20260122205223 - driver_notifications, matching_requests ---
+
+-- Create matching_requests table to track automatic driver matching
+CREATE TABLE public.matching_requests (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'searching' CHECK (status IN ('searching', 'pending_response', 'negotiating', 'completed', 'failed', 'cancelled')),
+  initial_offer NUMERIC NOT NULL,
+  pickup_latitude NUMERIC,
+  pickup_longitude NUMERIC,
+  search_radius_meters INTEGER NOT NULL DEFAULT 50000,
+  current_courier_id UUID REFERENCES public.couriers(id),
+  courier_notified_at TIMESTAMP WITH TIME ZONE,
+  response_deadline TIMESTAMP WITH TIME ZONE,
+  couriers_tried UUID[] DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Create driver_notifications table
+CREATE TABLE public.driver_notifications (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  matching_request_id UUID NOT NULL REFERENCES public.matching_requests(id) ON DELETE CASCADE,
+  courier_id UUID NOT NULL REFERENCES public.couriers(id),
+  lead_id UUID NOT NULL REFERENCES public.leads(id),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'viewed', 'accepted', 'declined', 'expired')),
+  distance_meters NUMERIC,
+  offer_amount NUMERIC NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  responded_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Enable RLS
+ALTER TABLE public.matching_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.driver_notifications ENABLE ROW LEVEL SECURITY;
+
+-- RLS policies for matching_requests
+CREATE POLICY "Allow public read matching_requests" ON public.matching_requests FOR SELECT USING (true);
+CREATE POLICY "Allow public insert matching_requests" ON public.matching_requests FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update matching_requests" ON public.matching_requests FOR UPDATE USING (true);
+
+-- RLS policies for driver_notifications
+CREATE POLICY "Allow public read driver_notifications" ON public.driver_notifications FOR SELECT USING (true);
+CREATE POLICY "Allow public insert driver_notifications" ON public.driver_notifications FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update driver_notifications" ON public.driver_notifications FOR UPDATE USING (true);
+
+-- Create trigger for updated_at
+CREATE TRIGGER update_matching_requests_updated_at
+BEFORE UPDATE ON public.matching_requests
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Enable realtime for driver_notifications
+ALTER PUBLICATION supabase_realtime ADD TABLE public.driver_notifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.matching_requests;
+
+
+--- Migration 3: 20260202181709 - Courier verification columns ---
+
+ALTER TABLE public.couriers 
+ADD COLUMN IF NOT EXISTS dot_number text,
+ADD COLUMN IF NOT EXISTS mc_number text,
+ADD COLUMN IF NOT EXISTS verification_status text DEFAULT 'pending',
+ADD COLUMN IF NOT EXISTS verified_at timestamp with time zone,
+ADD COLUMN IF NOT EXISTS legal_name text,
+ADD COLUMN IF NOT EXISTS operating_status text;
+
+CREATE INDEX IF NOT EXISTS idx_couriers_dot_number ON public.couriers(dot_number);
+CREATE INDEX IF NOT EXISTS idx_couriers_verification_status ON public.couriers(verification_status);
+
+
+--- Migration 4: 20260203171920 - activity_log ---
+
+CREATE TABLE public.activity_log (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  lead_id UUID REFERENCES public.leads(id),
+  action_type TEXT NOT NULL,
+  previous_value TEXT,
+  new_value TEXT,
+  performed_by TEXT DEFAULT 'System',
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.activity_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read activity_log" ON public.activity_log FOR SELECT USING (true);
+CREATE POLICY "Allow public insert activity_log" ON public.activity_log FOR INSERT WITH CHECK (true);
+
+CREATE INDEX idx_activity_log_lead_id ON public.activity_log(lead_id);
+CREATE INDEX idx_activity_log_created_at ON public.activity_log(created_at DESC);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_log;
+
+
+--- Migration 5: 20260203172808 - accounting_records, accounting_history ---
+
+CREATE TABLE public.accounting_records (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  listing_id TEXT NOT NULL,
+  cost NUMERIC NOT NULL DEFAULT 0,
+  date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  dispatch_status TEXT NOT NULL DEFAULT 'pending',
+  payout_status TEXT NOT NULL DEFAULT 'pending',
+  has_docs BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.accounting_history (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  record_id UUID NOT NULL REFERENCES public.accounting_records(id) ON DELETE CASCADE,
+  action_type TEXT NOT NULL,
+  previous_value TEXT,
+  new_value TEXT,
+  performed_by TEXT NOT NULL DEFAULT 'System',
+  details TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.accounting_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounting_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read accounting_records" ON public.accounting_records FOR SELECT USING (true);
+CREATE POLICY "Allow public insert accounting_records" ON public.accounting_records FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update accounting_records" ON public.accounting_records FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete accounting_records" ON public.accounting_records FOR DELETE USING (true);
+
+CREATE POLICY "Allow public read accounting_history" ON public.accounting_history FOR SELECT USING (true);
+CREATE POLICY "Allow public insert accounting_history" ON public.accounting_history FOR INSERT WITH CHECK (true);
+
+CREATE INDEX idx_accounting_history_record_id ON public.accounting_history(record_id);
+CREATE INDEX idx_accounting_records_listing_id ON public.accounting_records(listing_id);
+
+CREATE TRIGGER update_accounting_records_updated_at
+BEFORE UPDATE ON public.accounting_records
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.accounting_records;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.accounting_history;
+
+INSERT INTO public.accounting_records (listing_id, cost, date, dispatch_status, payout_status, has_docs) VALUES
+('SHP-001', 850, '2025-12-20T18:28:00Z', 'dispatched', 'processing', true),
+('SHP-002', 620, '2026-01-19T18:28:00Z', 'dispatched', 'paid', true),
+('SHP-003', 450, '2026-02-01T18:28:00Z', 'dispatched', 'paid', true),
+('SHP-004', 1200, '2025-12-30T18:28:00Z', 'pending', 'pending', false),
+('SHP-005', 380, '2026-01-10T18:28:00Z', 'dispatched', 'processing', true),
+('SHP-006', 720, '2025-11-15T18:28:00Z', 'canceled', 'pending', false),
+('SHP-007', 580, '2026-01-25T18:28:00Z', 'dispatched', 'paid', true),
+('SHP-008', 490, '2026-01-05T18:28:00Z', 'dispatched', 'paid', false);
+
+INSERT INTO public.accounting_history (record_id, action_type, performed_by, details)
+SELECT id, 'created', 'System', 'Record created'
+FROM public.accounting_records;
+
+
+--- Migration 6: 20260203183750 - condition_reports ---
+
+CREATE TABLE public.condition_reports (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  vehicle_id TEXT NOT NULL,
+  lead_id UUID REFERENCES public.leads(id) ON DELETE CASCADE,
+  runs_and_drives TEXT NOT NULL DEFAULT 'unknown',
+  starts BOOLEAN NOT NULL DEFAULT false,
+  not_drivable BOOLEAN NOT NULL DEFAULT false,
+  no_structural_damage BOOLEAN NOT NULL DEFAULT true,
+  prior_paint BOOLEAN NOT NULL DEFAULT false,
+  tires_condition TEXT NOT NULL DEFAULT 'good',
+  clean BOOLEAN NOT NULL DEFAULT true,
+  other_odor BOOLEAN NOT NULL DEFAULT false,
+  smoke_odor BOOLEAN NOT NULL DEFAULT false,
+  keys_available BOOLEAN NOT NULL DEFAULT true,
+  key_fobs INTEGER NOT NULL DEFAULT 1,
+  invoice_available BOOLEAN NOT NULL DEFAULT false,
+  mileage TEXT DEFAULT '',
+  announcements JSONB NOT NULL DEFAULT '[]'::jsonb,
+  high_value_options JSONB NOT NULL DEFAULT '[]'::jsonb,
+  exterior_damage_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  interior_damage_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  mechanical_issues JSONB NOT NULL DEFAULT '[]'::jsonb,
+  structural_issues JSONB NOT NULL DEFAULT '[]'::jsonb,
+  vehicle_history JSONB NOT NULL DEFAULT '{}'::jsonb,
+  vehicle_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  tires_wheels JSONB NOT NULL DEFAULT '{}'::jsonb,
+  exterior_checklist JSONB NOT NULL DEFAULT '{}'::jsonb,
+  under_vehicle JSONB NOT NULL DEFAULT '{}'::jsonb,
+  under_hood JSONB NOT NULL DEFAULT '{}'::jsonb,
+  brakes_tires JSONB NOT NULL DEFAULT '{}'::jsonb,
+  damage_areas JSONB NOT NULL DEFAULT '{}'::jsonb,
+  condition_notes TEXT DEFAULT '',
+  mechanic_comments TEXT DEFAULT '',
+  estimated_repair_cost TEXT DEFAULT '',
+  photos JSONB NOT NULL DEFAULT '[]'::jsonb,
+  pdf_report_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.condition_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read condition_reports" ON public.condition_reports FOR SELECT USING (true);
+CREATE POLICY "Allow public insert condition_reports" ON public.condition_reports FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update condition_reports" ON public.condition_reports FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete condition_reports" ON public.condition_reports FOR DELETE USING (true);
+
+CREATE TRIGGER update_condition_reports_updated_at
+BEFORE UPDATE ON public.condition_reports
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE INDEX idx_condition_reports_vehicle_id ON public.condition_reports(vehicle_id);
+CREATE INDEX idx_condition_reports_lead_id ON public.condition_reports(lead_id);
+
+
+--- Migration 7: 20260203191343 - shipment_documents ---
+
+CREATE TABLE public.shipment_documents (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  courier_id UUID REFERENCES public.couriers(id) ON DELETE SET NULL,
+  document_type TEXT NOT NULL CHECK (document_type IN ('invoice', 'bill_of_lading', 'proof_of_delivery', 'condition_report', 'other')),
+  file_name TEXT NOT NULL,
+  file_url TEXT NOT NULL,
+  file_size INTEGER,
+  mime_type TEXT,
+  notes TEXT,
+  uploaded_by TEXT NOT NULL DEFAULT 'courier',
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.shipment_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read shipment_documents" ON public.shipment_documents FOR SELECT USING (true);
+CREATE POLICY "Allow public insert shipment_documents" ON public.shipment_documents FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update shipment_documents" ON public.shipment_documents FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete shipment_documents" ON public.shipment_documents FOR DELETE USING (true);
+
+CREATE TRIGGER update_shipment_documents_updated_at
+BEFORE UPDATE ON public.shipment_documents
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('shipment-documents', 'shipment-documents', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Allow public read shipment documents" ON storage.objects FOR SELECT USING (bucket_id = 'shipment-documents');
+CREATE POLICY "Allow public upload shipment documents" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'shipment-documents');
+CREATE POLICY "Allow public delete shipment documents" ON storage.objects FOR DELETE USING (bucket_id = 'shipment-documents');
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.shipment_documents;
+
+
+--- Migration 8: 20260204142453 - accounting_records vehicle columns ---
+
+ALTER TABLE public.accounting_records 
+ADD COLUMN IF NOT EXISTS vehicle_year text DEFAULT '2024',
+ADD COLUMN IF NOT EXISTS vehicle_make text DEFAULT 'Unknown',
+ADD COLUMN IF NOT EXISTS vehicle_model text DEFAULT 'Vehicle',
+ADD COLUMN IF NOT EXISTS vin text DEFAULT 'N/A',
+ADD COLUMN IF NOT EXISTS stock_number text DEFAULT 'N/A',
+ADD COLUMN IF NOT EXISTS payment_method text DEFAULT 'cod';
+
+ALTER TABLE public.accounting_records DROP COLUMN IF EXISTS dispatch_status;
+
+
+--- Migration 9: 20260219111236 - profiles (shipper auth) ---
+
+CREATE TABLE public.profiles (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_name TEXT,
+  full_name TEXT,
+  phone TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own profile" ON public.profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.profiles (user_id, full_name)
+  VALUES (NEW.id, NEW.raw_user_meta_data ->> 'full_name');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--- Migration 10: 20260223100000 - accounting_records shipper_id ---
+
+ALTER TABLE public.accounting_records 
+ADD COLUMN IF NOT EXISTS shipper_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_accounting_records_shipper_id ON public.accounting_records(shipper_id);
+
+
+================================================================================
+PART 2: COURIER MIGRATIONS
+================================================================================
+NOTE: If Courier uses a SEPARATE Supabase project, run these in that project.
+If SHARED with Shipper: run after Part 1. load_notifications references auth.users.
+saved_loads references couriers and leads - requires Part 1 first if shared DB.
+
+--- Migration 11: 20260123145015 - load_notifications, load_offers ---
+
+CREATE TABLE public.load_notifications (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  shipper_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  shipper_name TEXT NOT NULL,
+  shipper_company TEXT,
+  shipper_rating NUMERIC(3,2) DEFAULT 5.0,
+  shipper_total_loads INTEGER DEFAULT 0,
+  shipper_phone TEXT,
+  pickup_address TEXT NOT NULL,
+  pickup_city TEXT NOT NULL,
+  pickup_state TEXT NOT NULL,
+  pickup_coordinates NUMERIC[] NOT NULL,
+  pickup_date DATE NOT NULL,
+  pickup_time TEXT NOT NULL,
+  delivery_address TEXT NOT NULL,
+  delivery_city TEXT NOT NULL,
+  delivery_state TEXT NOT NULL,
+  delivery_coordinates NUMERIC[] NOT NULL,
+  delivery_date DATE NOT NULL,
+  delivery_time TEXT NOT NULL,
+  vehicle_year INTEGER NOT NULL,
+  vehicle_make TEXT NOT NULL,
+  vehicle_model TEXT NOT NULL,
+  vehicle_type TEXT NOT NULL,
+  price NUMERIC(10,2) NOT NULL,
+  distance NUMERIC(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'expired', 'counter_offered')),
+  assigned_courier_id UUID REFERENCES auth.users(id),
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.load_offers (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  notification_id UUID REFERENCES public.load_notifications(id) ON DELETE CASCADE NOT NULL,
+  courier_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  offer_price NUMERIC(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'countered')),
+  message TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.load_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.load_offers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view pending notifications" 
+ON public.load_notifications 
+FOR SELECT 
+TO authenticated
+USING (status = 'pending' OR shipper_id = auth.uid() OR assigned_courier_id = auth.uid());
+
+CREATE POLICY "Shippers can create notifications" 
+ON public.load_notifications 
+FOR INSERT 
+TO authenticated
+WITH CHECK (shipper_id = auth.uid());
+
+CREATE POLICY "Shippers can update own notifications" 
+ON public.load_notifications 
+FOR UPDATE 
+TO authenticated
+USING (shipper_id = auth.uid());
+
+CREATE POLICY "Users can view relevant offers" 
+ON public.load_offers 
+FOR SELECT 
+TO authenticated
+USING (
+  courier_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM public.load_notifications WHERE id = notification_id AND shipper_id = auth.uid())
+);
+
+CREATE POLICY "Couriers can create offers" 
+ON public.load_offers 
+FOR INSERT 
+TO authenticated
+WITH CHECK (courier_id = auth.uid());
+
+CREATE POLICY "Users can update relevant offers" 
+ON public.load_offers 
+FOR UPDATE 
+TO authenticated
+USING (
+  courier_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM public.load_notifications WHERE id = notification_id AND shipper_id = auth.uid())
+);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.load_notifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.load_offers;
+
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER update_load_notifications_updated_at
+BEFORE UPDATE ON public.load_notifications
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_load_offers_updated_at
+BEFORE UPDATE ON public.load_offers
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--- Migration 12: 20260131215754 - invoices storage bucket ---
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('invoices', 'invoices', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Users can upload invoices" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'invoices');
+CREATE POLICY "Public can view invoices" ON storage.objects FOR SELECT TO public USING (bucket_id = 'invoices');
+CREATE POLICY "Users can delete own invoices" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'invoices');
+
+
+--- Migration 13: 20260203202557 - load_notifications_public view + RLS changes ---
+
+CREATE VIEW public.load_notifications_public
+WITH (security_invoker = on) AS
+SELECT 
+  id, pickup_address, pickup_city, pickup_state, pickup_coordinates, pickup_date, pickup_time,
+  delivery_address, delivery_city, delivery_state, delivery_coordinates, delivery_date, delivery_time,
+  vehicle_make, vehicle_model, vehicle_type, vehicle_year,
+  price, distance, status, expires_at, created_at, updated_at,
+  assigned_courier_id, shipper_id
+FROM public.load_notifications;
+
+DROP POLICY IF EXISTS "Anyone can view pending notifications" ON public.load_notifications;
+
+CREATE POLICY "Shipper and assigned courier can view full data" 
+ON public.load_notifications FOR SELECT 
+USING ((shipper_id = auth.uid()) OR (assigned_courier_id = auth.uid()));
+
+CREATE POLICY "Anyone can view pending notifications via view"
+ON public.load_notifications FOR SELECT
+USING (status = 'pending'::text);
+
+
+--- Migration 14: 20260203205654 - invoices bucket private, view updates ---
+
+UPDATE storage.buckets SET public = false WHERE id = 'invoices';
+
+DROP POLICY IF EXISTS "Public can view invoices" ON storage.objects;
+DROP POLICY IF EXISTS "Users can upload invoices" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own invoices" ON storage.objects;
+
+CREATE POLICY "Authenticated users can upload invoices" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'invoices');
+CREATE POLICY "Authenticated users can view invoices" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'invoices');
+CREATE POLICY "Authenticated users can delete invoices" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'invoices');
+
+DROP VIEW IF EXISTS public.load_notifications_public;
+
+CREATE VIEW public.load_notifications_public
+WITH (security_invoker = false) AS
+SELECT 
+  id, pickup_address, pickup_city, pickup_state, pickup_coordinates, pickup_date, pickup_time,
+  delivery_address, delivery_city, delivery_state, delivery_coordinates, delivery_date, delivery_time,
+  vehicle_type, vehicle_make, vehicle_model, vehicle_year,
+  price, distance, status, expires_at, created_at, updated_at,
+  assigned_courier_id, shipper_id
+FROM public.load_notifications
+WHERE status = 'pending';
+
+DROP POLICY IF EXISTS "Anyone can view pending notifications via view" ON public.load_notifications;
+
+
+--- Migration 15: 20260203225352 - load_notifications_public table (replaces view) + sync trigger ---
+
+DROP VIEW IF EXISTS public.load_notifications_public;
+
+CREATE TABLE IF NOT EXISTS public.load_notifications_public (
+  id uuid PRIMARY KEY REFERENCES public.load_notifications(id) ON DELETE CASCADE,
+  pickup_address text NOT NULL,
+  pickup_city text NOT NULL,
+  pickup_state text NOT NULL,
+  pickup_coordinates numeric[] NOT NULL,
+  pickup_date date NOT NULL,
+  pickup_time text NOT NULL,
+  delivery_address text NOT NULL,
+  delivery_city text NOT NULL,
+  delivery_state text NOT NULL,
+  delivery_coordinates numeric[] NOT NULL,
+  delivery_date date NOT NULL,
+  delivery_time text NOT NULL,
+  vehicle_type text NOT NULL,
+  vehicle_make text NOT NULL,
+  vehicle_model text NOT NULL,
+  vehicle_year integer NOT NULL,
+  price numeric NOT NULL,
+  distance numeric NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  assigned_courier_id uuid NULL,
+  shipper_id uuid NULL
+);
+
+ALTER TABLE public.load_notifications_public ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public can view pending public loads" ON public.load_notifications_public;
+CREATE POLICY "Public can view pending public loads"
+ON public.load_notifications_public
+FOR SELECT
+TO anon, authenticated
+USING (status = 'pending' AND expires_at > now());
+
+DROP POLICY IF EXISTS "No direct insert into public loads" ON public.load_notifications_public;
+CREATE POLICY "No direct insert into public loads"
+ON public.load_notifications_public
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (false);
+
+DROP POLICY IF EXISTS "No direct update of public loads" ON public.load_notifications_public;
+CREATE POLICY "No direct update of public loads"
+ON public.load_notifications_public
+FOR UPDATE
+TO anon, authenticated
+USING (false);
+
+DROP POLICY IF EXISTS "No direct delete of public loads" ON public.load_notifications_public;
+CREATE POLICY "No direct delete of public loads"
+ON public.load_notifications_public
+FOR DELETE
+TO anon, authenticated
+USING (false);
+
+CREATE OR REPLACE FUNCTION public.sync_load_notifications_public()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO public
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    DELETE FROM public.load_notifications_public WHERE id = OLD.id;
+    RETURN OLD;
+  END IF;
+  IF NEW.status = 'pending' AND NEW.expires_at > now() THEN
+    INSERT INTO public.load_notifications_public (
+      id, pickup_address, pickup_city, pickup_state, pickup_coordinates, pickup_date, pickup_time,
+      delivery_address, delivery_city, delivery_state, delivery_coordinates, delivery_date, delivery_time,
+      vehicle_type, vehicle_make, vehicle_model, vehicle_year,
+      price, distance, status, expires_at, created_at, updated_at,
+      assigned_courier_id, shipper_id
+    )
+    VALUES (
+      NEW.id, NEW.pickup_address, NEW.pickup_city, NEW.pickup_state, NEW.pickup_coordinates, NEW.pickup_date, NEW.pickup_time,
+      NEW.delivery_address, NEW.delivery_city, NEW.delivery_state, NEW.delivery_coordinates, NEW.delivery_date, NEW.delivery_time,
+      NEW.vehicle_type, NEW.vehicle_make, NEW.vehicle_model, NEW.vehicle_year,
+      NEW.price, NEW.distance, NEW.status, NEW.expires_at,
+      NEW.created_at, NEW.updated_at,
+      NEW.assigned_courier_id, NEW.shipper_id
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      pickup_address = EXCLUDED.pickup_address, pickup_city = EXCLUDED.pickup_city, pickup_state = EXCLUDED.pickup_state,
+      pickup_coordinates = EXCLUDED.pickup_coordinates, pickup_date = EXCLUDED.pickup_date, pickup_time = EXCLUDED.pickup_time,
+      delivery_address = EXCLUDED.delivery_address, delivery_city = EXCLUDED.delivery_city, delivery_state = EXCLUDED.delivery_state,
+      delivery_coordinates = EXCLUDED.delivery_coordinates, delivery_date = EXCLUDED.delivery_date, delivery_time = EXCLUDED.delivery_time,
+      vehicle_type = EXCLUDED.vehicle_type, vehicle_make = EXCLUDED.vehicle_make, vehicle_model = EXCLUDED.vehicle_model, vehicle_year = EXCLUDED.vehicle_year,
+      price = EXCLUDED.price, distance = EXCLUDED.distance, status = EXCLUDED.status, expires_at = EXCLUDED.expires_at,
+      created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at,
+      assigned_courier_id = EXCLUDED.assigned_courier_id, shipper_id = EXCLUDED.shipper_id;
+  ELSE
+    DELETE FROM public.load_notifications_public WHERE id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sync_load_notifications_public_trigger ON public.load_notifications;
+CREATE TRIGGER sync_load_notifications_public_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.load_notifications
+FOR EACH ROW
+EXECUTE FUNCTION public.sync_load_notifications_public();
+
+INSERT INTO public.load_notifications_public (
+  id, pickup_address, pickup_city, pickup_state, pickup_coordinates, pickup_date, pickup_time,
+  delivery_address, delivery_city, delivery_state, delivery_coordinates, delivery_date, delivery_time,
+  vehicle_type, vehicle_make, vehicle_model, vehicle_year,
+  price, distance, status, expires_at, created_at, updated_at,
+  assigned_courier_id, shipper_id
+)
+SELECT id, pickup_address, pickup_city, pickup_state, pickup_coordinates, pickup_date, pickup_time,
+  delivery_address, delivery_city, delivery_state, delivery_coordinates, delivery_date, delivery_time,
+  vehicle_type, vehicle_make, vehicle_model, vehicle_year,
+  price, distance, status, expires_at, created_at, updated_at,
+  assigned_courier_id, shipper_id
+FROM public.load_notifications
+WHERE status = 'pending' AND expires_at > now()
+ON CONFLICT (id) DO NOTHING;
+
+
+--- Migration 16: 20260224100001 - saved_loads (REQUIRES couriers and leads tables) ---
+
+CREATE TABLE IF NOT EXISTS public.saved_loads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  courier_id UUID NOT NULL REFERENCES public.couriers(id) ON DELETE CASCADE,
+  lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(courier_id, lead_id)
+);
+
+CREATE INDEX idx_saved_loads_courier_id ON public.saved_loads(courier_id);
+CREATE INDEX idx_saved_loads_lead_id ON public.saved_loads(lead_id);
+
+ALTER TABLE public.saved_loads ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all access to saved_loads" ON public.saved_loads FOR ALL USING (true) WITH CHECK (true);
+
+
+================================================================================
+PART 3: BACKEND MIGRATIONS (dispatch-server - for Courier cost tracking)
+================================================================================
+Run in the SAME Supabase project as the backend. REQUIRES public.couriers table.
+
+--- Migration 17: 20260224000000 - courier_cost_records ---
+
+CREATE TABLE IF NOT EXISTS public.courier_cost_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  courier_id UUID NOT NULL REFERENCES public.couriers(id) ON DELETE CASCADE,
+  amount DECIMAL(12,2) NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('Fuel','Parking','Insurance','Washing','Maintenance','Credits')),
+  description TEXT DEFAULT '',
+  date DATE NOT NULL,
+  payment_method TEXT DEFAULT 'Card',
+  has_docs BOOLEAN DEFAULT false,
+  invoice_url TEXT,
+  invoice_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_courier_cost_records_courier_id ON public.courier_cost_records(courier_id);
+CREATE INDEX IF NOT EXISTS idx_courier_cost_records_date ON public.courier_cost_records(date);
+
+
+================================================================================
+END OF MIGRATIONS
+================================================================================
+Run order: Part 1 (Shipper) -> Part 2 (Courier) -> Part 3 (Backend)
+If tables already exist, some statements may fail - use IF NOT EXISTS / DROP IF EXISTS as shown.
+For fresh DB: run all in order.
