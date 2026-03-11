@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { parse, isWithinInterval, isAfter, isBefore, differenceInDays } from "date-fns";
-import { addDemoAssignedNotification, demoNotificationToAssignedLoad, getDemoAssignedNotifications } from "@/lib/demoAssignedLoads";
+import { addDemoAssignedNotification, demoNotificationToAssignedLoad } from "@/lib/demoAssignedLoads";
 import { useCourierContractsQuery } from "@/hooks/queries/useCourierContracts";
 
 
@@ -74,8 +74,7 @@ export const LoadsPage = () => {
     if (apiLoads.length > 0) {
       setLoads(apiLoads);
     } else if (!apiLoading) {
-      const demoAssigned = getDemoAssignedNotifications().map(demoNotificationToAssignedLoad);
-      setLoads(demoAssigned);
+      setLoads([]);
     }
   }, [apiLoads, apiLoading]);
 

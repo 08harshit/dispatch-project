@@ -17,7 +17,8 @@ import { toast } from "sonner";
 interface AddCostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (record: Omit<CostRecord, "id">) => void;
+  onAdd: (record: Omit<CostRecord, "id">) => void | Promise<void>;
+  isSubmitting?: boolean;
 }
 
 const categories = [
@@ -31,7 +32,7 @@ const categories = [
 
 const paymentMethods = ["Card", "Cash", "Wire", "Check"];
 
-export const AddCostDialog = ({ open, onOpenChange, onAdd }: AddCostDialogProps) => {
+export const AddCostDialog = ({ open, onOpenChange, onAdd, isSubmitting = false }: AddCostDialogProps) => {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<CostRecord["category"]>("Fuel");
   const [description, setDescription] = useState("");
@@ -120,11 +121,11 @@ export const AddCostDialog = ({ open, onOpenChange, onAdd }: AddCostDialogProps)
         }
       }
 
-      // Format date as MM-DD-YYYY
+      // Date from input is YYYY-MM-DD; pass as-is for API (service converts if needed)
       const [year, month, day] = date.split("-");
       const formattedDate = `${month}-${day}-${year}`;
 
-      onAdd({
+      await onAdd({
         amount: parseFloat(amount),
         category,
         description,
@@ -336,19 +337,19 @@ export const AddCostDialog = ({ open, onOpenChange, onAdd }: AddCostDialogProps)
               variant="outline"
               onClick={() => onOpenChange(false)}
               className="flex-1 h-11 rounded-xl border-stone-200 text-stone-600 hover:bg-stone-50"
-              disabled={isUploading}
+              disabled={isUploading || isSubmitting}
             >
               Cancel
             </Button>
             <Button
               type="submit"
               className="flex-1 h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg shadow-amber-200/50"
-              disabled={isUploading}
+              disabled={isUploading || isSubmitting}
             >
-              {isUploading ? (
+              {(isUploading || isSubmitting) ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Uploading...
+                  {isUploading ? "Uploading..." : "Saving..."}
                 </>
               ) : (
                 "Add Cost"

@@ -462,6 +462,196 @@ router.delete("/shipper/records/:id", validateUuidParam("id"), async (req: Reque
     }
 });
 
+// --- Courier-scoped cost records ---
+
+async function resolveCourierIdForRequest(req: Request): Promise<string | null> {
+    const courierId = req.query.courier_id as string | undefined;
+    if (courierId) return courierId;
+    return req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null;
+}
+
+const COURIER_COST_CATEGORIES = ["Fuel", "Parking", "Insurance", "Washing", "Maintenance", "Credits"] as const;
+
+function mapDbCostToResponse(r: any) {
+    return {
+        id: r.id,
+        amount: Number(r.amount),
+        category: r.category,
+        description: r.description || "",
+        date: r.date,
+        paymentMethod: r.payment_method || "Card",
+        hasDocs: r.has_docs ?? false,
+        invoiceUrl: r.invoice_url,
+        invoiceName: r.invoice_name,
+    };
+}
+
+router.get("/courier/costs", async (req: Request, res: Response) => {
+    try {
+        const courierId = await resolveCourierIdForRequest(req);
+        if (!courierId) {
+            return res.status(401).json({ success: false, error: "Courier not found for user" });
+        }
+
+        let query = supabaseAdmin
+            .from("courier_cost_records")
+            .select("*")
+            .eq("courier_id", courierId)
+            .order("date", { ascending: false });
+
+        const { dateFrom, dateTo, category } = req.query;
+        if (dateFrom && typeof dateFrom === "string") query = query.gte("date", `${dateFrom}T00:00:00.000Z`);
+        if (dateTo && typeof dateTo === "string") query = query.lte("date", `${dateTo}T23:59:59.999Z`);
+        if (category && typeof category === "string" && COURIER_COST_CATEGORIES.includes(category as any)) {
+            query = query.eq("category", category);
+        }
+
+        const { data: rows, error } = await query;
+
+        if (error) {
+            if (isMissingTableError(error)) return res.json({ success: true, data: [] });
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const data = (rows || []).map(mapDbCostToResponse);
+        res.json({ success: true, data });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /accounting/courier/costs");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.post("/courier/costs", async (req: Request, res: Response) => {
+    try {
+        const courierId = await resolveCourierIdForRequest(req);
+        if (!courierId) {
+            return res.status(401).json({ success: false, error: "Courier not found for user" });
+        }
+
+        const body = req.body || {};
+        const { amount, category, description, date, paymentMethod, hasDocs, invoiceUrl, invoiceName } = body;
+
+        if (amount == null || !category || !date) {
+            return res.status(400).json({ success: false, error: "amount, category, and date are required" });
+        }
+        if (!COURIER_COST_CATEGORIES.includes(category)) {
+            return res.status(400).json({ success: false, error: `category must be one of: ${COURIER_COST_CATEGORIES.join(", ")}` });
+        }
+
+        const { data: record, error: insertErr } = await supabaseAdmin
+            .from("courier_cost_records")
+            .insert({
+                courier_id: courierId,
+                amount: Number(amount),
+                category,
+                description: description || "",
+                date,
+                payment_method: paymentMethod || "Card",
+                has_docs: hasDocs ?? false,
+                invoice_url: invoiceUrl || null,
+                invoice_name: invoiceName || null,
+            })
+            .select()
+            .single();
+
+        if (insertErr) {
+            if (isMissingTableError(insertErr)) return res.status(503).json({ success: false, error: "Service unavailable" });
+            logger.error({ err: insertErr }, "Error creating courier cost record");
+            return res.status(500).json({ success: false, error: insertErr.message });
+        }
+
+        res.json({ success: true, data: mapDbCostToResponse(record) });
+    } catch (err: any) {
+        logger.error({ err }, "Error in POST /accounting/courier/costs");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.patch("/courier/costs/:id", validateUuidParam("id"), async (req: Request<{ id: string }>, res: Response) => {
+    try {
+        const courierId = await resolveCourierIdForRequest(req);
+        if (!courierId) {
+            return res.status(401).json({ success: false, error: "Courier not found for user" });
+        }
+
+        const { data: existing } = await supabaseAdmin
+            .from("courier_cost_records")
+            .select("*")
+            .eq("id", req.params.id)
+            .single();
+
+        if (!existing) return res.status(404).json({ success: false, error: "Record not found" });
+        if (existing.courier_id !== courierId) {
+            return res.status(403).json({ success: false, error: "Not authorized to update this record" });
+        }
+
+        const body = req.body || {};
+        const updates: Record<string, unknown> = {};
+        const fields = ["amount", "category", "description", "date", "payment_method", "has_docs", "invoice_url", "invoice_name"];
+        for (const f of fields) {
+            const camel = f.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+            const val = body[camel] ?? body[f];
+            if (val !== undefined) updates[f] = val;
+        }
+        if (updates.category && !COURIER_COST_CATEGORIES.includes(updates.category as string)) {
+            return res.status(400).json({ success: false, error: `category must be one of: ${COURIER_COST_CATEGORIES.join(", ")}` });
+        }
+        if (Object.keys(updates).length === 0) {
+            return res.json({ success: true, data: mapDbCostToResponse(existing), message: "No changes" });
+        }
+        if (updates.amount !== undefined) updates.amount = Number(updates.amount);
+
+        const { data: updated, error } = await supabaseAdmin
+            .from("courier_cost_records")
+            .update(updates)
+            .eq("id", req.params.id)
+            .select()
+            .single();
+
+        if (error) {
+            if (isMissingTableError(error)) return res.status(503).json({ success: false, error: "Service unavailable" });
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        res.json({ success: true, data: mapDbCostToResponse(updated) });
+    } catch (err: any) {
+        logger.error({ err }, "Error in PATCH /accounting/courier/costs/:id");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.delete("/courier/costs/:id", validateUuidParam("id"), async (req: Request<{ id: string }>, res: Response) => {
+    try {
+        const courierId = await resolveCourierIdForRequest(req);
+        if (!courierId) {
+            return res.status(401).json({ success: false, error: "Courier not found for user" });
+        }
+
+        const { data: existing } = await supabaseAdmin
+            .from("courier_cost_records")
+            .select("id, courier_id")
+            .eq("id", req.params.id)
+            .single();
+
+        if (!existing) return res.status(404).json({ success: false, error: "Record not found" });
+        if (existing.courier_id !== courierId) {
+            return res.status(403).json({ success: false, error: "Not authorized to delete this record" });
+        }
+
+        const { error } = await supabaseAdmin.from("courier_cost_records").delete().eq("id", req.params.id);
+
+        if (error) {
+            if (isMissingTableError(error)) return res.status(503).json({ success: false, error: "Service unavailable" });
+            return res.status(500).json({ success: false, error: error.message });
+        }
+
+        res.json({ success: true, message: "Record deleted" });
+    } catch (err: any) {
+        logger.error({ err }, "Error in DELETE /accounting/courier/costs/:id");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 router.get("/shipper/records/:id/history", validateUuidParam("id"), async (req: Request<{ id: string }>, res: Response) => {
     try {
         const shipperId = await resolveShipperIdForRequest(req);

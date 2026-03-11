@@ -2,7 +2,12 @@ import { useState, useMemo } from "react";
 import { TrendingUp, DollarSign, Package, Clock, BarChart3, ArrowUpRight, ArrowDownRight, Sparkles, Zap, Target, Route } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useAnalyticsStatsQuery, useDeliveryTrendsQuery } from "@/hooks/queries/useAnalytics";
+import {
+  useAnalyticsStatsQuery,
+  useDeliveryTrendsQuery,
+  useAnalyticsTopRoutesQuery,
+  useAnalyticsLoadTypesQuery,
+} from "@/hooks/queries/useAnalytics";
 
 const rangeToApi = (p: string) => (p === "7D" ? "7days" : p === "30D" ? "30days" : p === "90D" ? "90days" : "30days");
 
@@ -13,6 +18,8 @@ export const AnalyticsPage = () => {
   const apiRange = rangeToApi(selectedPeriod);
   const { data: statsData = [] } = useAnalyticsStatsQuery(apiRange);
   const { data: trendData = [] } = useDeliveryTrendsQuery(apiRange);
+  const { data: topRoutesData = [] } = useAnalyticsTopRoutesQuery(apiRange);
+  const { data: loadTypesData = [] } = useAnalyticsLoadTypesQuery(apiRange);
 
   const iconMap = [DollarSign, Package, Clock, Target];
   const colorMap = ["emerald", "amber", "emerald", "amber"];
@@ -42,20 +49,10 @@ export const AnalyticsPage = () => {
     { month: 'Dec', revenue: 90, loads: 85 },
   ];
 
-  const topRoutes = [
-    { route: 'Los Angeles → Phoenix', loads: 45, revenue: '$18,450', growth: '+15%' },
-    { route: 'Dallas → Houston', loads: 38, revenue: '$14,200', growth: '+8%' },
-    { route: 'Chicago → Detroit', loads: 32, revenue: '$12,800', growth: '+12%' },
-    { route: 'Miami → Atlanta', loads: 28, revenue: '$11,200', growth: '+5%' },
-    { route: 'New York → Boston', loads: 25, revenue: '$9,800', growth: '+10%' },
-  ];
-
-  const loadTypes = [
-    { type: 'Sedan', percentage: 35, color: 'bg-amber-200' },
-    { type: 'SUV', percentage: 28, color: 'bg-emerald-200' },
-    { type: 'Truck', percentage: 22, color: 'bg-orange-200' },
-    { type: 'Luxury', percentage: 15, color: 'bg-teal-200' },
-  ];
+  const topRoutes = topRoutesData.length > 0
+    ? topRoutesData.map((r) => ({ ...r, route: r.route.replace(" -> ", " \u2192 ") }))
+    : [];
+  const loadTypes = loadTypesData.length > 0 ? loadTypesData : [];
 
   return (
     <div className="space-y-8 animate-fade-in">

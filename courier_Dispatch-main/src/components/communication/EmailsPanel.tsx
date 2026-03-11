@@ -375,6 +375,14 @@ export const EmailsPanel = ({ emails, searchQuery, onSearchChange, onMarkRead, o
               )}
             </div>
           </>
+        ) : emails.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div className="p-4 rounded-2xl bg-stone-50 mb-4">
+              <Mail className="h-8 w-8 text-stone-400" />
+            </div>
+            <p className="text-lg font-semibold text-stone-700">No emails yet</p>
+            <p className="text-sm text-stone-500 mt-1 max-w-xs">When you receive emails from shippers or dispatch, they will appear here.</p>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-stone-400 text-sm gap-2">
             <Mail className="h-8 w-8 text-stone-300" />

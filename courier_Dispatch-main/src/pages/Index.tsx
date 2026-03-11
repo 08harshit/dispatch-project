@@ -4,11 +4,6 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { NotificationPanel } from "@/components/notifications/NotificationPanel";
 import { APP_BUILD_ID_SHORT } from "@/lib/build";
 
-// Communication unread counts (mock - matches CommunicationPage initial data)
-const UNREAD_MESSAGES = 3; // messages with unread: true
-const UNREAD_EMAILS = 2;   // emails with unread: true
-const MISSED_CALLS = 1;    // calls with type "missed"
-
 function getActiveItemFromPath(pathname: string): string {
   const segment = pathname.replace(/^\/dashboard\/?/, "") || "home";
   return segment;
@@ -20,7 +15,7 @@ const Index = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const badgeCounts = useMemo(() => ({
-    communication: UNREAD_MESSAGES + UNREAD_EMAILS + MISSED_CALLS,
+    communication: 0,
   }), []);
 
   return (
