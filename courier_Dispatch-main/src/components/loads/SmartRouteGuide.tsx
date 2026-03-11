@@ -52,9 +52,10 @@ interface SmartRouteGuideProps {
   onComplete: () => void;
 }
 
-// Mock coordinates for demo - in production these would come from the load data
 const getLoadCoordinates = (load: Load) => {
-  // Simple hash function to generate consistent coordinates from city names
+  if (load.pickupCoords && load.deliveryCoords) {
+    return { pickup: load.pickupCoords, delivery: load.deliveryCoords };
+  }
   const hashCity = (city: string, state: string) => {
     const str = city + state;
     let hash = 0;
@@ -64,10 +65,8 @@ const getLoadCoordinates = (load: Load) => {
     }
     return hash;
   };
-
   const pickupHash = hashCity(load.pickup.city, load.pickup.state);
   const deliveryHash = hashCity(load.delivery.city, load.delivery.state);
-
   return {
     pickup: [33 + (pickupHash % 10) / 10, -117 - (pickupHash % 20) / 10] as [number, number],
     delivery: [34 + (deliveryHash % 10) / 10, -118 - (deliveryHash % 20) / 10] as [number, number],

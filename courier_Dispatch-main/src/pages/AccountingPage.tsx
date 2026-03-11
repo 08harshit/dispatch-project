@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { DollarSign, Calendar, Plus } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { DollarSign, Plus } from "lucide-react";
 import { RevenueTable, RevenueRecord } from "@/components/accounting/RevenueTable";
 import { CostsTable, CostRecord } from "@/components/accounting/CostsTable";
 import { AccountingTabs } from "@/components/accounting/AccountingTabs";
@@ -8,16 +8,45 @@ import { AddRevenueDialog } from "@/components/accounting/AddRevenueDialog";
 import { EditRevenueDialog } from "@/components/accounting/EditRevenueDialog";
 import { EditCostDialog } from "@/components/accounting/EditCostDialog";
 import { SearchFilterBar } from "@/components/filters/SearchFilterBar";
-import { mockRevenue } from "@/data/mockRevenue";
-import { mockCosts } from "@/data/mockCosts";
+import {
+  useAccountingStatsQuery,
+  useAccountingTransactionsQuery,
+  useCourierCostsQuery,
+  useCreateCourierCostMutation,
+  useUpdateCourierCostMutation,
+  useDeleteCourierCostMutation,
+} from "@/hooks/queries/useAccounting";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { parse, isWithinInterval, isAfter, isBefore } from "date-fns";
 
+function transactionToRevenueRecord(t: { id: string; date: string; description: string; amount: number }): RevenueRecord {
+  const [y, m, d] = (t.date || "").split("-");
+  const dateStr = m && d && y ? `${m}-${d}-${y}` : "";
+  return {
+    id: t.id,
+    revenue: t.amount,
+    bookingId: t.description?.slice(0, 20) || t.id.slice(0, 8),
+    date: dateStr,
+    paymentMethod: "Invoice",
+    hasDocs: false,
+  };
+}
+
 export const AccountingPage = () => {
   const [activeTab, setActiveTab] = useState<"revenue" | "costs">("revenue");
-  const [revenueRecords, setRevenueRecords] = useState<RevenueRecord[]>(mockRevenue);
-  const [costRecords, setCostRecords] = useState<CostRecord[]>(mockCosts);
+  const [revenueRecords, setRevenueRecords] = useState<RevenueRecord[]>([]);
+
+  const { data: stats } = useAccountingStatsQuery();
+  const { data: transactions } = useAccountingTransactionsQuery({ type: "income" });
+  const { data: costRecords = [], isLoading: costsLoading } = useCourierCostsQuery();
+  const createCostMutation = useCreateCourierCostMutation();
+  const updateCostMutation = useUpdateCourierCostMutation();
+  const deleteCostMutation = useDeleteCourierCostMutation();
+
+  useEffect(() => {
+    if (transactions) setRevenueRecords(transactions.map(transactionToRevenueRecord));
+  }, [transactions]);
   const [searchQuery, setSearchQuery] = useState("");
   const [fromDate, setFromDate] = useState<Date | undefined>();
   const [toDate, setToDate] = useState<Date | undefined>();
@@ -108,14 +137,34 @@ export const AccountingPage = () => {
     setEditCostRecord(record);
   };
 
-  const handleSaveCost = (updated: CostRecord) => {
-    setCostRecords((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-    toast.success("Cost updated successfully");
+  const handleSaveCost = async (updated: CostRecord) => {
+    try {
+      await updateCostMutation.mutateAsync({
+        id: updated.id,
+        body: {
+          amount: updated.amount,
+          category: updated.category,
+          description: updated.description,
+          date: updated.date,
+          paymentMethod: updated.paymentMethod,
+          hasDocs: updated.hasDocs,
+          invoiceUrl: updated.invoiceUrl,
+          invoiceName: updated.invoiceName,
+        },
+      });
+      toast.success("Cost updated successfully");
+    } catch {
+      toast.error("Failed to update cost");
+    }
   };
 
-  const handleDeleteCost = (recordId: string) => {
-    setCostRecords((prev) => prev.filter((r) => r.id !== recordId));
-    toast.success("Cost record deleted");
+  const handleDeleteCost = async (recordId: string) => {
+    try {
+      await deleteCostMutation.mutateAsync(recordId);
+      toast.success("Cost record deleted");
+    } catch {
+      toast.error("Failed to delete cost");
+    }
   };
 
   const handleViewCost = (record: CostRecord) => {
@@ -136,16 +185,25 @@ export const AccountingPage = () => {
       id: crypto.randomUUID(),
     };
     setRevenueRecords((prev) => [record, ...prev]);
-    toast.success("Revenue added successfully");
+    toast.success("Revenue added (local only; backend has no create endpoint)");
   };
 
-  const handleAddCost = (newCost: Omit<CostRecord, "id">) => {
-    const record: CostRecord = {
-      ...newCost,
-      id: crypto.randomUUID(),
-    };
-    setCostRecords((prev) => [record, ...prev]);
-    toast.success("Cost added successfully");
+  const handleAddCost = async (newCost: Omit<CostRecord, "id">) => {
+    try {
+      await createCostMutation.mutateAsync({
+        amount: newCost.amount,
+        category: newCost.category,
+        description: newCost.description,
+        date: newCost.date,
+        paymentMethod: newCost.paymentMethod,
+        hasDocs: newCost.hasDocs,
+        invoiceUrl: newCost.invoiceUrl,
+        invoiceName: newCost.invoiceName,
+      });
+      toast.success("Cost added successfully");
+    } catch {
+      toast.error("Failed to add cost");
+    }
   };
 
   const handleClearFilters = () => {
@@ -237,6 +295,7 @@ export const AccountingPage = () => {
         open={addCostOpen}
         onOpenChange={setAddCostOpen}
         onAdd={handleAddCost}
+        isSubmitting={createCostMutation.isPending}
       />
 
       {/* Add Revenue Dialog */}

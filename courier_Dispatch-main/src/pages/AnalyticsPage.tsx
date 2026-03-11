@@ -1,19 +1,40 @@
-import { useState } from "react";
-import { TrendingUp, DollarSign, Package, Clock, BarChart3, Activity, ArrowUpRight, ArrowDownRight, Sparkles, Zap, Target, Route, X } from "lucide-react";
+import { useState, useMemo } from "react";
+import { TrendingUp, DollarSign, Package, Clock, BarChart3, ArrowUpRight, ArrowDownRight, Sparkles, Zap, Target, Route } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  useAnalyticsStatsQuery,
+  useDeliveryTrendsQuery,
+  useAnalyticsTopRoutesQuery,
+  useAnalyticsLoadTypesQuery,
+} from "@/hooks/queries/useAnalytics";
+
+const rangeToApi = (p: string) => (p === "7D" ? "7days" : p === "30D" ? "30days" : p === "90D" ? "90days" : "30days");
 
 export const AnalyticsPage = () => {
   const [showAllRoutes, setShowAllRoutes] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('30D');
-  const metrics = [
-    { label: 'Total Revenue', value: '$128,450', change: '+12.5%', up: true, icon: DollarSign, color: 'emerald' },
-    { label: 'Completed Loads', value: '342', change: '+8.2%', up: true, icon: Package, color: 'amber' },
-    { label: 'Avg. Delivery Time', value: '2.4 days', change: '-15%', up: true, icon: Clock, color: 'emerald' },
-    { label: 'Success Rate', value: '94.8%', change: '+2.1%', up: true, icon: Target, color: 'amber' },
-  ];
 
-  const monthlyData = [
+  const apiRange = rangeToApi(selectedPeriod);
+  const { data: statsData = [] } = useAnalyticsStatsQuery(apiRange);
+  const { data: trendData = [] } = useDeliveryTrendsQuery(apiRange);
+  const { data: topRoutesData = [] } = useAnalyticsTopRoutesQuery(apiRange);
+  const { data: loadTypesData = [] } = useAnalyticsLoadTypesQuery(apiRange);
+
+  const iconMap = [DollarSign, Package, Clock, Target];
+  const colorMap = ["emerald", "amber", "emerald", "amber"];
+  const metrics = useMemo(() => statsData.slice(0, 4).map((s, i) => ({
+    label: s.title,
+    value: s.value,
+    change: s.change,
+    up: s.isPositive,
+    icon: iconMap[i] || Package,
+    color: colorMap[i] || "amber",
+  })), [statsData]);
+
+  const monthlyData = trendData.length > 0
+    ? trendData.map((t) => ({ month: t.day.slice(0, 3) || t.day, revenue: t.percentage, loads: t.deliveries }))
+    : [
     { month: 'Jan', revenue: 45, loads: 65 },
     { month: 'Feb', revenue: 52, loads: 70 },
     { month: 'Mar', revenue: 48, loads: 62 },
@@ -28,20 +49,10 @@ export const AnalyticsPage = () => {
     { month: 'Dec', revenue: 90, loads: 85 },
   ];
 
-  const topRoutes = [
-    { route: 'Los Angeles → Phoenix', loads: 45, revenue: '$18,450', growth: '+15%' },
-    { route: 'Dallas → Houston', loads: 38, revenue: '$14,200', growth: '+8%' },
-    { route: 'Chicago → Detroit', loads: 32, revenue: '$12,800', growth: '+12%' },
-    { route: 'Miami → Atlanta', loads: 28, revenue: '$11,200', growth: '+5%' },
-    { route: 'New York → Boston', loads: 25, revenue: '$9,800', growth: '+10%' },
-  ];
-
-  const loadTypes = [
-    { type: 'Sedan', percentage: 35, color: 'bg-amber-200' },
-    { type: 'SUV', percentage: 28, color: 'bg-emerald-200' },
-    { type: 'Truck', percentage: 22, color: 'bg-orange-200' },
-    { type: 'Luxury', percentage: 15, color: 'bg-teal-200' },
-  ];
+  const topRoutes = topRoutesData.length > 0
+    ? topRoutesData.map((r) => ({ ...r, route: r.route.replace(" -> ", " \u2192 ") }))
+    : [];
+  const loadTypes = loadTypesData.length > 0 ? loadTypesData : [];
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -83,7 +94,12 @@ export const AnalyticsPage = () => {
 
       {/* Metrics Grid - Innovative Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((metric, i) => {
+        {(metrics.length > 0 ? metrics : [
+          { label: 'Deliveries Today', value: '0', change: '+0%', up: true, icon: Package, color: 'amber' },
+          { label: 'On-Time Rate', value: '0%', change: '+0%', up: true, icon: Clock, color: 'emerald' },
+          { label: 'Avg. Transit Time', value: '0 days', change: '+0%', up: true, icon: Target, color: 'amber' },
+          { label: 'Utilization', value: '0%', change: '+0%', up: true, icon: DollarSign, color: 'emerald' },
+        ]).map((metric, i) => {
           const isEmerald = metric.color === 'emerald';
           return (
             <div 

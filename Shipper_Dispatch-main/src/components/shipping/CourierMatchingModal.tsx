@@ -23,7 +23,7 @@ import { useCouriers, Courier } from "@/hooks/useCouriers";
 import { useNegotiations } from "@/hooks/useNegotiations";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import * as matchingService from "@/services/matchingService";
 
 interface CourierMatchingModalProps {
   open: boolean;
@@ -125,11 +125,12 @@ const CourierMatchingModal = ({ open, onOpenChange, leadId, initialPrice }: Cour
     try {
       // If courier has a DOT number, verify with FMCSA
       if (courier.dot_number) {
-        const { data, error } = await supabase.functions.invoke('verify-carrier', {
-          body: { dotNumber: courier.dot_number, courierId: courier.id }
-        });
+        const data = await matchingService.verifyCarrier({
+          dotNumber: courier.dot_number,
+          courierId: courier.id,
+        }) as { status?: string; verified?: boolean; carrier?: { legalName?: string; operatingStatus?: string } };
 
-        if (error) {
+        if (!data || (data as { error?: string }).error) {
           setVerificationResult({
             type: 'error',
             message: 'Failed to verify carrier. Please try again.',

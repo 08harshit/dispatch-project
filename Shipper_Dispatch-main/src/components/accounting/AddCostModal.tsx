@@ -75,7 +75,7 @@ const AddCostModal = ({ open, onOpenChange, onAdd }: AddCostModalProps) => {
 
     onAdd({
       listingId: formData.listingId.trim(),
-      vehicleYear: formData.vehicleYear || "2024",
+      vehicleYear: formData.vehicleYear || new Date().getFullYear().toString(),
       vehicleMake: formData.vehicleMake || "Unknown",
       vehicleModel: formData.vehicleModel || "Vehicle",
       vin: formData.vin || "N/A",
@@ -149,7 +149,7 @@ const AddCostModal = ({ open, onOpenChange, onAdd }: AddCostModalProps) => {
               <Label htmlFor="vehicleYear">Year</Label>
               <Input
                 id="vehicleYear"
-                placeholder="2024"
+                placeholder={new Date().getFullYear().toString()}
                 value={formData.vehicleYear}
                 onChange={(e) => setFormData({ ...formData, vehicleYear: e.target.value })}
               />

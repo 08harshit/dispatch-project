@@ -32,6 +32,7 @@ interface AccountPasswordDialogProps {
   accountName: string;
   accountId: string;
   accountEmail: string;
+  accountType?: "courier" | "shipper";
 }
 
 const generatePassword = () => {
@@ -49,6 +50,7 @@ export function AccountPasswordDialog({
   accountName,
   accountId,
   accountEmail,
+  accountType = "courier",
 }: AccountPasswordDialogProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -89,7 +91,9 @@ export function AccountPasswordDialog({
     }
   };
 
-  const handleSave = () => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
     if (!newPassword || !confirmPassword) {
       toast.error("Veuillez remplir tous les champs");
       return;
@@ -102,12 +106,28 @@ export function AccountPasswordDialog({
       toast.error("Le mot de passe est trop faible");
       return;
     }
-    toast.success(`Mot de passe de ${accountName} modifié avec succès !`);
-    setNewPassword("");
-    setConfirmPassword("");
-    setShowNew(false);
-    setShowConfirm(false);
-    onOpenChange(false);
+
+    setIsSaving(true);
+    try {
+      if (accountType === "shipper") {
+        const { setShipperPassword } = await import("@/services/shipperService");
+        await setShipperPassword(accountId, newPassword);
+      } else {
+        const { setCourierPassword } = await import("@/services/courierService");
+        await setCourierPassword(accountId, newPassword);
+      }
+      toast.success(`Mot de passe de ${accountName} modifié avec succès !`);
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowNew(false);
+      setShowConfirm(false);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("Failed to update password:", err);
+      toast.error(err.message || "Failed to update password");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -222,11 +242,10 @@ export function AccountPasswordDialog({
                 <div className="space-y-2 animate-fade-in">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">Force</span>
-                    <span className={`text-xs font-semibold ${
-                      strength.score <= 25 ? 'text-destructive' :
+                    <span className={`text-xs font-semibold ${strength.score <= 25 ? 'text-destructive' :
                       strength.score <= 50 ? 'text-warning' :
-                      strength.score <= 75 ? 'text-primary' : 'text-success'
-                    }`}>{strength.label}</span>
+                        strength.score <= 75 ? 'text-primary' : 'text-success'
+                      }`}>{strength.label}</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                     <div
@@ -260,9 +279,8 @@ export function AccountPasswordDialog({
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className={`pl-10 pr-10 bg-background/50 border-muted-foreground/20 focus:border-primary ${
-                    match ? 'border-success/50' : mismatch ? 'border-destructive/50' : ''
-                  }`}
+                  className={`pl-10 pr-10 bg-background/50 border-muted-foreground/20 focus:border-primary ${match ? 'border-success/50' : mismatch ? 'border-destructive/50' : ''
+                    }`}
                 />
                 <button
                   type="button"
@@ -312,9 +330,13 @@ export function AccountPasswordDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Annuler
               </Button>
-              <Button onClick={handleSave} className="gap-2">
-                <Lock className="h-4 w-4" />
-                Sauvegarder
+              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                {isSaving ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4" />
+                )}
+                {isSaving ? "Modification..." : "Sauvegarder"}
               </Button>
             </div>
           </div>

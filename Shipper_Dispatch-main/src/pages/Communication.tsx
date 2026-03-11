@@ -29,41 +29,11 @@ export interface Message {
   read: boolean;
 }
 
-const mockConversations: Conversation[] = [
-  { id: "1", courierName: "Mike's Transport", courierInitials: "MT", lastMessage: "I'll be at pickup in 20 minutes", lastMessageTime: "2 min ago", unreadCount: 2, shipmentId: "LD-024", status: "active", isOnline: true },
-  { id: "2", courierName: "FastHaul LLC", courierInitials: "FH", lastMessage: "BOL has been uploaded", lastMessageTime: "15 min ago", unreadCount: 0, shipmentId: "LD-019", status: "active", isOnline: true },
-  { id: "3", courierName: "Express Auto Carriers", courierInitials: "EA", lastMessage: "Vehicle delivered successfully", lastMessageTime: "1 hr ago", unreadCount: 0, shipmentId: "LD-022", status: "active", isOnline: false },
-  { id: "4", courierName: "Summit Logistics", courierInitials: "SL", lastMessage: "Need updated delivery address", lastMessageTime: "3 hr ago", unreadCount: 1, shipmentId: "LD-018", status: "active", isOnline: false },
-  { id: "5", courierName: "Pinnacle Haulers", courierInitials: "PH", lastMessage: "Invoice sent. Thanks!", lastMessageTime: "Yesterday", unreadCount: 0, shipmentId: "LD-015", status: "archived", isOnline: false },
-];
-
-const mockMessages: Record<string, Message[]> = {
-  "1": [
-    { id: "m1", conversationId: "1", sender: "shipper", text: "Hi Mike, what's your ETA for the pickup at 1420 Industrial Blvd?", timestamp: "10:30 AM", read: true },
-    { id: "m2", conversationId: "1", sender: "courier", text: "Hey! I'm about 30 minutes out. Traffic is light today.", timestamp: "10:32 AM", read: true },
-    { id: "m3", conversationId: "1", sender: "shipper", text: "Great, the vehicle is a 2024 BMW X5 — keys are with the lot manager.", timestamp: "10:33 AM", read: true },
-    { id: "m4", conversationId: "1", sender: "courier", text: "Got it. I'll reach out to them on arrival.", timestamp: "10:35 AM", read: true },
-    { id: "m5", conversationId: "1", sender: "courier", text: "I'll be at pickup in 20 minutes", timestamp: "10:45 AM", read: false },
-  ],
-  "2": [
-    { id: "m6", conversationId: "2", sender: "courier", text: "Vehicle picked up. Starting transit to delivery address.", timestamp: "9:00 AM", read: true },
-    { id: "m7", conversationId: "2", sender: "shipper", text: "Thanks! Please upload the BOL when possible.", timestamp: "9:05 AM", read: true },
-    { id: "m8", conversationId: "2", sender: "courier", text: "BOL has been uploaded", timestamp: "9:30 AM", read: true },
-  ],
-  "3": [
-    { id: "m9", conversationId: "3", sender: "courier", text: "Vehicle delivered successfully", timestamp: "8:00 AM", read: true },
-    { id: "m10", conversationId: "3", sender: "shipper", text: "Confirmed. Thank you for the smooth delivery!", timestamp: "8:15 AM", read: true },
-  ],
-  "4": [
-    { id: "m11", conversationId: "4", sender: "courier", text: "Need updated delivery address", timestamp: "7:00 AM", read: false },
-  ],
-};
-
 type TabType = "messages" | "emails" | "calls";
 
-const tabs: { id: TabType; label: string; icon: React.ReactNode; badge?: number }[] = [
-  { id: "messages", label: "Messages", icon: <MessageSquare className="h-4 w-4" />, badge: 3 },
-  { id: "emails", label: "Emails", icon: <Mail className="h-4 w-4" />, badge: 5 },
+const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  { id: "messages", label: "Messages", icon: <MessageSquare className="h-4 w-4" /> },
+  { id: "emails", label: "Emails", icon: <Mail className="h-4 w-4" /> },
   { id: "calls", label: "Calls", icon: <Phone className="h-4 w-4" /> },
 ];
 
@@ -72,8 +42,9 @@ const Communication = () => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const selectedConversation = mockConversations.find((c) => c.id === selectedConversationId) || null;
-  const messages = selectedConversationId ? mockMessages[selectedConversationId] || [] : [];
+  const conversations: Conversation[] = [];
+  const selectedConversation = conversations.find((c) => c.id === selectedConversationId) || null;
+  const messages: Message[] = [];
 
   return (
     <MainLayout>
@@ -93,16 +64,6 @@ const Communication = () => {
             >
               {tab.icon}
               {tab.label}
-              {tab.badge && tab.badge > 0 && (
-                <span className={cn(
-                  "h-5 min-w-5 flex items-center justify-center rounded-full text-[10px] font-semibold px-1.5",
-                  activeTab === tab.id
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : "bg-primary/10 text-primary"
-                )}>
-                  {tab.badge}
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -112,7 +73,7 @@ const Communication = () => {
           {activeTab === "messages" && (
             <>
               <ConversationList
-                conversations={mockConversations}
+                conversations={conversations}
                 selectedId={selectedConversationId}
                 onSelect={setSelectedConversationId}
                 searchQuery={searchQuery}

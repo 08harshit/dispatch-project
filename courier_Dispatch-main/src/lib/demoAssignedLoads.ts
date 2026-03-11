@@ -138,6 +138,8 @@ export const demoNotificationToAssignedLoad = (n: LoadNotification): Load => {
       state: n.delivery.state,
       zipcode: "85001",
     },
+    pickupCoords: n.pickup.coordinates,
+    deliveryCoords: n.delivery.coordinates,
     pickupDate: yyyyMmDdToMmDdYyyy(n.pickup.date),
     deliveryDate: yyyyMmDdToMmDdYyyy(n.delivery.date),
     status: mapAssignedStatus(n.status || "accepted"),

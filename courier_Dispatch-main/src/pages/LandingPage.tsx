@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,11 +133,11 @@ const LandingPage = () => {
             </div>
             <span className="text-xl font-bold text-foreground">Dispatch</span>
           </div>
-          <a href="#auth" className="hidden sm:block">
+          <Link to="/auth" className="hidden sm:block">
             <Button size="sm" className="rounded-full px-6">
               Get Started <ChevronRight className="h-4 w-4" />
             </Button>
-          </a>
+          </Link>
         </div>
       </nav>
 
@@ -204,6 +204,11 @@ const LandingPage = () => {
                     <div className="space-y-2">
                       <Label htmlFor="si-pass">Password</Label>
                       <Input id="si-pass" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} disabled={isLoading} />
+                      <div className="text-right">
+                        <Link to="/auth" className="text-sm font-semibold text-primary hover:underline">
+                          Forgot password?
+                        </Link>
+                      </div>
                     </div>
                     <Button className="w-full" onClick={() => handleSubmit("signin")} disabled={isLoading}>
                       {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</> : "Sign In"}

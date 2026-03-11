@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger";
 
 export interface ApiError {
     status: number;
@@ -14,12 +15,13 @@ export const errorHandler = (
 ) => {
     const status = "status" in err ? err.status : 500;
     const message = err.message || "Internal Server Error";
+    const isProduction = process.env.NODE_ENV === "production";
 
-    console.error(`[ERROR] ${status} - ${message}`, "details" in err ? err.details : "");
+    logger.error({ status, message, details: "details" in err ? err.details : undefined }, "[ERROR]");
 
     res.status(status).json({
         success: false,
-        error: message,
-        ...("details" in err && process.env.NODE_ENV === "development" ? { details: err.details } : {}),
+        error: isProduction && status >= 500 ? "Internal Server Error" : message,
+        ...("details" in err && !isProduction ? { details: err.details } : {}),
     });
 };

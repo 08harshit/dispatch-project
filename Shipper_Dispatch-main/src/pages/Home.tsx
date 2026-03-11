@@ -1,40 +1,19 @@
+import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { Package, DollarSign, Users, Clock, Truck, FileText, BarChart3, ArrowUpRight, Sparkles, ChevronRight } from "lucide-react";
+import { Package, DollarSign, Clock, Truck, BarChart3, ArrowUpRight, Sparkles, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
+import { useShipperDashboard } from "@/hooks/useShipperDashboard";
 
 const Home = () => {
   const currentDate = format(new Date(), "EEE, MMM d");
+  const { data: overview } = useShipperDashboard();
 
   const stats = [
-    { 
-      label: "Active Shipments", 
-      value: "24", 
-      trend: "+12%", 
-      icon: Package, 
-      positive: true 
-    },
-    { 
-      label: "Spends", 
-      value: "$45,280", 
-      trend: "+8%", 
-      icon: DollarSign, 
-      positive: true 
-    },
-    { 
-      label: "Total Shipment", 
-      value: "156", 
-      trend: "+5%", 
-      icon: Truck, 
-      positive: true 
-    },
-    { 
-      label: "On-Time Rate", 
-      value: "94.2%", 
-      trend: "+2%", 
-      icon: Clock, 
-      positive: true 
-    },
+    { label: "Active Shipments", value: overview?.activeShipments?.toString() ?? "-", trend: "+0%", icon: Package, positive: true, path: "/shipping" },
+    { label: "Spends", value: overview?.spends ?? "-", trend: "+0%", icon: DollarSign, positive: true, path: "/accounting" },
+    { label: "Total Shipment", value: overview?.totalShipment?.toString() ?? "-", trend: "+0%", icon: Truck, positive: true, path: "/shipping" },
+    { label: "On-Time Rate", value: overview?.onTimeRate ?? "-", trend: "+0%", icon: Clock, positive: true, path: "/analytics" },
   ];
 
   const quickActions = [
@@ -43,32 +22,16 @@ const Home = () => {
     { label: "Analytics", description: "Performance insights", icon: BarChart3, path: "/analytics" },
   ];
 
-  const recentActivity = [
-    { 
-      type: "delivered", 
-      message: "Shipment #SHP-024 delivered to Miami, FL", 
-      time: "5 min ago",
-      icon: Package
-    },
-    { 
-      type: "payment", 
-      message: "Payment received for Shipment #SHP-019", 
-      time: "12 min ago",
-      icon: DollarSign
-    },
-    { 
-      type: "request", 
-      message: "New shipment request from AutoMax", 
-      time: "28 min ago",
-      icon: Sparkles
-    },
-    { 
-      type: "transit", 
-      message: "Shipment #SHP-022 in transit to Dallas", 
-      time: "1 hr ago",
-      icon: Truck
-    },
-  ];
+  const recentActivity = (overview?.recentActivity?.length ?? 0) > 0
+    ? overview!.recentActivity.map((a) => ({
+        type: a.type,
+        message: a.message,
+        time: a.time,
+        icon: a.type === "delivered" ? Package : a.type === "transit" ? Truck : Sparkles,
+      }))
+    : [
+        { type: "empty", message: "No recent activity yet", time: "", icon: Package },
+      ];
 
   const getActivityIconColor = (type: string) => {
     switch (type) {
@@ -90,7 +53,6 @@ const Home = () => {
             {currentDate}
           </div>
           <button className="relative p-2 rounded-full bg-card border border-border hover:bg-muted transition-colors">
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center font-medium">9+</span>
             <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
@@ -117,22 +79,24 @@ const Home = () => {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
-            <Card key={stat.label} className="dashboard-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <stat.icon className="w-5 h-5 text-primary" />
+            <Link key={stat.label} to={stat.path} className="block focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg">
+              <Card className="dashboard-card border-border cursor-pointer hover:border-primary/30 transition-colors h-full">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <stat.icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <span className={`text-xs font-semibold ${stat.positive ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {stat.trend}
+                    </span>
                   </div>
-                  <span className={`text-xs font-semibold ${stat.positive ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {stat.trend}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold text-foreground mt-0.5">{stat.value}</p>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="mt-4">
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold text-foreground mt-0.5">{stat.value}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
 
@@ -144,25 +108,24 @@ const Home = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {quickActions.map((action) => (
-              <Card 
-                key={action.label} 
-                className="dashboard-card border-border cursor-pointer hover:border-primary/30 transition-colors"
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                        <action.icon className="w-5 h-5 text-primary" />
+              <Link key={action.label} to={action.path} className="block focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg">
+                <Card className="dashboard-card border-border cursor-pointer hover:border-primary/30 transition-colors h-full">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <action.icon className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{action.label}</p>
+                          <p className="text-xs text-muted-foreground">{action.description}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-foreground">{action.label}</p>
-                        <p className="text-xs text-muted-foreground">{action.description}</p>
-                      </div>
+                      <ArrowUpRight className="w-5 h-5 text-muted-foreground" />
                     </div>
-                    <ArrowUpRight className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         </div>

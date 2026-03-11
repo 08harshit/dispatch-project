@@ -52,6 +52,8 @@ export interface Load {
     state: string;
     zipcode: string;
   };
+  pickupCoords?: [number, number];
+  deliveryCoords?: [number, number];
   pickupDate: string;
   deliveryDate: string;
   status: "pickup" | "late" | "done";

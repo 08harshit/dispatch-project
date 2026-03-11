@@ -39,20 +39,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    return { error: error as Error | null };
+    if (error) return { error: error as Error | null };
+    const user = data?.user;
+    const role = (user?.user_metadata?.role as string) || (user?.app_metadata?.role as string);
+    if (role !== "courier" && role !== "admin") {
+      await supabase.auth.signOut();
+      return {
+        error: new Error("You do not have access to the Courier portal. Please use the Shipper or Admin portal.") as Error,
+      };
+    }
+    return { error: null };
   };
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;
-    
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        data: { role: "courier" },
         emailRedirectTo: redirectUrl,
       },
     });

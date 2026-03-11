@@ -20,9 +20,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/common/EmptyState";
 
 interface AssignedLoadsTableProps {
   loads: Load[];
+  loading?: boolean;
   onEdit: (load: Load) => void;
   onDelete: (loadId: string) => void;
   onView: (load: Load) => void;
@@ -72,6 +74,7 @@ const getPaymentBadge = (method: string) => {
 
 export const AssignedLoadsTable = ({
   loads,
+  loading = false,
   onEdit,
   onDelete,
   onView,
@@ -182,23 +185,25 @@ export const AssignedLoadsTable = ({
     setScannerOpen(true);
   };
 
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-emerald-100 p-16 flex flex-col items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="mt-4 text-sm text-stone-500">Loading assigned loads...</p>
+      </div>
+    );
+  }
+
   if (loads.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-emerald-100 p-16 text-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-16 w-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
-            <Car className="h-7 w-7 text-emerald-400" strokeWidth={1.5} />
-          </div>
-          <div>
-            <p className="font-semibold text-stone-700">No assigned loads</p>
-            <p className="text-sm text-stone-400 mt-1">Accept loads from the Available tab to see them here</p>
-          </div>
-          {onAddDemoLoads && (
-            <Button variant="outline" onClick={onAddDemoLoads} className="mt-2 rounded-xl">
-              Add demo assigned loads
-            </Button>
-          )}
-        </div>
+      <div className="bg-white rounded-2xl border border-emerald-100 p-16">
+        <EmptyState
+          icon={Car}
+          title="No assigned loads"
+          description="Accept loads from the Available tab to see them here"
+          actionLabel={onAddDemoLoads ? "Add demo assigned loads" : undefined}
+          onAction={onAddDemoLoads}
+        />
       </div>
     );
   }

@@ -1,20 +1,19 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Package, DollarSign, Users, Clock, ArrowUpRight, TrendingUp, Activity, ChevronRight, ScanLine, Car, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VinScannerDialog } from "@/components/loads/VinScannerDialog";
 import { BOLViewerDialog } from "@/components/loads/BOLViewerDialog";
 import { InvoiceViewerDialog } from "@/components/loads/InvoiceViewerDialog";
 import { useBolManager, findLoadByVin } from "@/hooks/useBolManager";
-import { mockLoads } from "@/data/mockLoads";
+import { useCourierOverviewQuery } from "@/hooks/queries/useCourierDashboard";
+import { useAnalyticsStatsQuery, useDeliveryTrendsQuery } from "@/hooks/queries/useAnalytics";
+import { contractToLoad } from "@/lib/contractToLoad";
 import { toast } from "sonner";
 import { generateInvoice } from "@/utils/generateInvoice";
 import type { Load } from "@/components/loads/LoadsTable";
 
-interface HomePageProps {
-  onNavigate?: (page: string) => void;
-}
-
-export const HomePage = ({ onNavigate }: HomePageProps) => {
+export const HomePage = () => {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [invoiceScannerOpen, setInvoiceScannerOpen] = useState(false);
   const [bolViewerOpen, setBolViewerOpen] = useState(false);
@@ -23,13 +22,13 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
   const [invoiceLoad, setInvoiceLoad] = useState<Load | null>(null);
   const [invoiceUrl, setInvoiceUrl] = useState("");
   const [scannedVin, setScannedVin] = useState("");
-  
-  const { addBol, addInvoice } = useBolManager();
 
-  // Only assigned loads (not available)
-  const assignedLoads = mockLoads.filter(load => 
-    load.status === "pickup" || load.status === "late" || load.status === "done"
-  );
+  const { addBol, addInvoice } = useBolManager();
+  const { data: overview } = useCourierOverviewQuery();
+  const { data: analyticsStats = [] } = useAnalyticsStatsQuery("30days");
+  const { data: trendData = [] } = useDeliveryTrendsQuery("7days");
+
+  const assignedLoads: Load[] = overview?.contracts ? overview.contracts.map(contractToLoad) : [];
 
   const handleVinScanned = (vin: string) => {
     // Find matching load by VIN
@@ -82,19 +81,21 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
     setInvoiceScannerOpen(false);
   };
 
+  const onTimeStat = analyticsStats.find((s) => s.title === "On-Time Rate");
   const stats = [
-    { label: 'Active Shipments', value: '24', change: '+12%', icon: Package, color: 'amber' },
-    { label: 'Revenue', value: '$45,280', change: '+8%', icon: DollarSign, color: 'emerald' },
-    { label: 'Total Clients', value: '156', change: '+5%', icon: Users, color: 'amber' },
-    { label: 'On-Time Rate', value: '94.2%', change: '+2%', icon: Clock, color: 'emerald' },
+    { label: 'Active Shipments', value: String(overview?.stats.assignedCount ?? 0), change: '', icon: Package, color: 'amber' as const, page: 'loads' as const },
+    { label: 'Revenue', value: overview?.stats.revenue ?? '$0', change: '', icon: DollarSign, color: 'emerald' as const, page: 'accounting' as const },
+    { label: 'Total Clients', value: '-', change: '', icon: Users, color: 'amber' as const, page: 'communication' as const },
+    { label: 'On-Time Rate', value: onTimeStat?.value ?? '0%', change: '', icon: Clock, color: 'emerald' as const, page: 'analytics' as const },
   ];
 
-  const recentActivity = [
-    { id: 1, message: 'Load LD-024 delivered to Miami, FL', time: '5 min ago', icon: Package, color: 'emerald' },
-    { id: 2, message: 'Payment received for LD-019', time: '12 min ago', icon: DollarSign, color: 'emerald' },
-    { id: 3, message: 'New shipment request from AutoMax', time: '28 min ago', icon: Package, color: 'amber' },
-    { id: 4, message: 'Load LD-022 in transit to Dallas', time: '1 hr ago', icon: Activity, color: 'amber' },
-  ];
+  const recentActivity = (overview?.recentActivity ?? []).slice(0, 4).map((a, i) => ({
+    id: a.id,
+    message: `${a.action} - ${a.entity}`,
+    time: a.date,
+    icon: a.status === "completed" ? DollarSign : Package,
+    color: (a.status === "completed" ? "emerald" : "amber") as "emerald" | "amber",
+  }));
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -122,10 +123,11 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
         {stats.map((stat, i) => {
           const isEmerald = stat.color === 'emerald';
           return (
-            <div 
+            <Link
               key={i}
+              to={`/dashboard/${stat.page}`}
               className={cn(
-                "group p-4 bg-white border rounded-xl hover:shadow-md transition-all duration-300",
+                "group p-4 bg-white border rounded-xl hover:shadow-md transition-all duration-300 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 block",
                 isEmerald ? "border-emerald-100 hover:border-emerald-200" : "border-amber-100 hover:border-amber-200"
               )}
             >
@@ -139,16 +141,18 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
                     isEmerald ? "text-emerald-600 group-hover:text-emerald-700" : "text-amber-600 group-hover:text-amber-700"
                   )} strokeWidth={2} />
                 </div>
-                <span className={cn(
-                  "text-xs font-semibold px-2 py-1 rounded-lg",
-                  isEmerald ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
-                )}>
-                  {stat.change}
-                </span>
+                {stat.change ? (
+                  <span className={cn(
+                    "text-xs font-semibold px-2 py-1 rounded-lg",
+                    isEmerald ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
+                  )}>
+                    {stat.change}
+                  </span>
+                ) : null}
               </div>
               <p className="text-xs text-stone-400 font-medium">{stat.label}</p>
               <p className="text-xl font-bold text-stone-700">{stat.value}</p>
-            </div>
+            </Link>
           );
         })}
       </div>
@@ -208,9 +212,9 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
             { label: 'Accounting', desc: 'Financial overview', icon: DollarSign, page: 'accounting' },
             { label: 'Analytics', desc: 'Performance insights', icon: TrendingUp, page: 'analytics' },
           ].map((action, i) => (
-            <button 
+            <Link
               key={i}
-              onClick={() => onNavigate?.(action.page)}
+              to={`/dashboard/${action.page}`}
               className="group flex items-center gap-4 p-4 bg-white border border-amber-100 rounded-xl text-left hover:shadow-md hover:border-amber-200 transition-all duration-300"
             >
               <div className="h-11 w-11 rounded-xl bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
@@ -223,7 +227,7 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
               <div className="h-8 w-8 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
                 <ArrowUpRight className="h-4 w-4 text-amber-600" />
               </div>
-            </button>
+            </Link>
           ))}
         </div>
       </div>
@@ -246,7 +250,9 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
           </div>
           
           <div className="space-y-2">
-            {recentActivity.map((activity) => {
+            {(recentActivity.length > 0 ? recentActivity : [
+              { id: "1", message: "No recent activity", time: "", icon: Activity, color: "amber" as const },
+            ]).map((activity) => {
               const isEmerald = activity.color === 'emerald';
               return (
                 <div 
@@ -288,12 +294,14 @@ export const HomePage = ({ onNavigate }: HomePageProps) => {
           </div>
           
           {/* Value */}
-          <p className="text-4xl font-bold text-stone-700 mb-1">+24.5%</p>
-          <p className="text-stone-400 text-sm">vs last month</p>
+          <p className="text-4xl font-bold text-stone-700 mb-1">
+            {trendData.length > 0 ? `${trendData.reduce((s, t) => s + t.deliveries, 0)} deliveries` : "0"}
+          </p>
+          <p className="text-stone-400 text-sm">Last 7 days</p>
           
           {/* Mini chart */}
           <div className="flex items-end gap-2 mt-6 h-16">
-            {[35, 55, 40, 70, 50, 85, 65].map((h, i) => (
+            {(trendData.length > 0 ? trendData.map((t) => t.percentage) : [0, 0, 0, 0, 0, 0, 0]).map((h, i) => (
               <div 
                 key={i}
                 className={cn(

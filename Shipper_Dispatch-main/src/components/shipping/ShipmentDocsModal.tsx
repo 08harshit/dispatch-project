@@ -145,9 +145,8 @@ const ShipmentDocsModal = ({
 
   const handleDelete = async (doc: ShipmentDocument) => {
     await deleteMutation.mutateAsync({
-      id: doc.id,
       leadId: doc.leadId,
-      fileUrl: doc.fileUrl,
+      docId: doc.id,
     });
   };
 

@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { UserCheck, Search, Shield, ShieldAlert, ShieldQuestion, Loader2, CheckCircle, AlertTriangle, XCircle, Phone, Mail, ShieldCheck, ShieldX } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import * as matchingService from "@/services/matchingService";
 import { useCouriers, Courier } from "@/hooks/useCouriers";
 import { cn } from "@/lib/utils";
 
@@ -118,11 +118,12 @@ const AssignVehicleModal = ({ vehicle, open, onOpenChange }: AssignVehicleModalP
     try {
       // If courier has a DOT number, verify with FMCSA
       if (activeCourier.dot_number) {
-        const { data, error } = await supabase.functions.invoke('verify-carrier', {
-          body: { dotNumber: activeCourier.dot_number, courierId: activeCourier.id }
-        });
+        const data = await matchingService.verifyCarrier({
+          dotNumber: activeCourier.dot_number,
+          courierId: activeCourier.id,
+        }) as { status?: string; verified?: boolean; carrier?: { legalName?: string; operatingStatus?: string } };
 
-        if (error) {
+        if (!data || (data as { error?: string }).error) {
           setVerificationResult({
             type: 'error',
             message: 'Failed to verify carrier. Please try again.',

@@ -77,40 +77,6 @@ const PostVehicle = () => {
     }));
   };
 
-  // Add vehicle from inventory
-  const handleAddFromInventory = (inventoryVehicle: {
-    id: string;
-    vin: string;
-    year: string;
-    make: string;
-    model: string;
-    type: string;
-    color: string;
-  }) => {
-    const vehicle: VehicleEntry = {
-      id: crypto.randomUUID(),
-      vin: inventoryVehicle.vin,
-      year: inventoryVehicle.year,
-      make: inventoryVehicle.make,
-      model: inventoryVehicle.model,
-      type: inventoryVehicle.type,
-      color: inventoryVehicle.color,
-      condition: {
-        runs: true,
-        rolls: true,
-        starts: true,
-        damaged: false,
-      },
-      conditionNotes: "",
-      conditionPhotos: [],
-    };
-    
-    setFormData((prev) => ({
-      ...prev,
-      vehicles: [...prev.vehicles, vehicle],
-    }));
-  };
-
   // Remove vehicle
   const removeVehicle = (id: string) => {
     setFormData((prev) => ({
@@ -180,7 +146,6 @@ const PostVehicle = () => {
     }
 
     // Success - in a real app, this would send to an API
-    console.log("Form submitted:", formData);
     toast({
       title: "Vehicle Posted Successfully",
       description: "Your vehicle listing has been created.",
@@ -371,7 +336,6 @@ const PostVehicle = () => {
             ) : (
               <VehicleSelector
                 selectedVehicles={formData.vehicles}
-                onAddFromInventory={handleAddFromInventory}
                 onRemoveVehicle={removeVehicle}
                 onAddNewVehicle={handleAddNewVehicle}
               />

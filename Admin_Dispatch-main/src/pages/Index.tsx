@@ -8,59 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useState } from "react";
-
-const alerts = [
-  {
-    id: "1",
-    title: "License Expiring Soon",
-    description: "3 couriers have licenses expiring within 30 days",
-    type: "warning" as const,
-    time: "2 hours ago",
-  },
-  {
-    id: "2",
-    title: "Insurance Update Required",
-    description: "Swift Logistics needs updated insurance documents",
-    type: "urgent" as const,
-    time: "5 hours ago",
-  },
-  {
-    id: "3",
-    title: "New Shipper Registration",
-    description: "ABC Manufacturing pending approval",
-    type: "info" as const,
-    time: "1 day ago",
-  },
-  {
-    id: "4",
-    title: "Compliance Check Due",
-    description: "5 couriers need quarterly compliance review",
-    type: "warning" as const,
-    time: "1 day ago",
-  },
-  {
-    id: "5",
-    title: "Document Expiring",
-    description: "USDOT certification expires in 15 days",
-    type: "urgent" as const,
-    time: "2 days ago",
-  },
-  {
-    id: "6",
-    title: "New Equipment Added",
-    description: "FastTrack added 2 new vehicles to fleet",
-    type: "info" as const,
-    time: "2 days ago",
-  },
-  {
-    id: "7",
-    title: "Rate Update Pending",
-    description: "3 shippers requested rate adjustments",
-    type: "info" as const,
-    time: "3 days ago",
-  },
-];
+import { useState, useEffect } from "react";
+import { fetchDashboardOverview, markAlertRead, dismissAlert, type DashboardStats, type RecentActivityItem } from "@/services/dashboardService";
 
 const alertStyles = {
   warning: {
@@ -80,11 +29,40 @@ const alertStyles = {
   },
 };
 const Index = () => {
-  const [notifications, setNotifications] = useState(alerts);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
+  const [alerts, setAlerts] = useState<{ id: string; title: string; description: string; type: "warning" | "urgent" | "info"; time: string }[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
-  const handleNotificationClick = (alert: typeof alerts[0]) => {
+  useEffect(() => {
+    fetchDashboardOverview()
+      .then(({ stats, recentActivity, alerts: apiAlerts }) => {
+        setStats(stats);
+        setRecentActivity(recentActivity);
+        setAlerts(
+          apiAlerts.map((a) => ({
+            id: a.id,
+            title: a.title,
+            description: a.description,
+            type: a.type,
+            time: a.time,
+          }))
+        );
+      })
+      .catch(() => {
+        setStats(null);
+        setRecentActivity([]);
+        setAlerts([]);
+      });
+  }, []);
+
+  const handleNotificationClick = async (alert: (typeof alerts)[0]) => {
     setReadIds((prev) => new Set(prev).add(alert.id));
+    try {
+      await markAlertRead(alert.id);
+    } catch {
+      // Ignore; local state already updated
+    }
     const styles = alertStyles[alert.type];
     toast(alert.title, {
       description: alert.description,
@@ -92,18 +70,27 @@ const Index = () => {
     });
   };
 
-  const handleDismiss = (e: React.MouseEvent, id: string) => {
+  const handleDismiss = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    toast.success("Notification dismissed");
+    const dismissedAlert = alerts.find((a) => a.id === id);
+    setAlerts((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await dismissAlert(id);
+      toast.success("Notification dismissed");
+    } catch {
+      if (dismissedAlert) setAlerts((prev) => [...prev, dismissedAlert]);
+      toast.error("Failed to dismiss");
+    }
   };
 
-  const handleMarkAllRead = () => {
-    setReadIds(new Set(notifications.map((n) => n.id)));
+  const handleMarkAllRead = async () => {
+    const unreadIds = alerts.filter((n) => !readIds.has(n.id)).map((n) => n.id);
+    setReadIds(new Set(alerts.map((n) => n.id)));
+    await Promise.all(unreadIds.map((id) => markAlertRead(id).catch(() => {})));
     toast.success("All notifications marked as read");
   };
 
-  const unreadCount = notifications.filter((n) => !readIds.has(n.id)).length;
+  const unreadCount = alerts.filter((n) => !readIds.has(n.id)).length;
 
   return (
     <MainLayout>
@@ -148,10 +135,10 @@ const Index = () => {
                   </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto p-2 space-y-1">
-                  {notifications.length === 0 ? (
+                  {alerts.length === 0 ? (
                     <div className="py-8 text-center text-sm text-muted-foreground">No notifications</div>
                   ) : (
-                    notifications.map((alert) => {
+                    alerts.map((alert) => {
                       const styles = alertStyles[alert.type];
                       const Icon = styles.icon;
                       const isRead = readIds.has(alert.id);
@@ -186,7 +173,7 @@ const Index = () => {
                     })
                   )}
                 </div>
-                {notifications.length > 0 && (
+                {alerts.length > 0 && (
                   <div className="border-t border-border/50 p-2">
                     <Button variant="ghost" className="w-full text-primary hover:text-primary hover:bg-primary/5 text-sm">
                       View All Alerts
@@ -203,31 +190,35 @@ const Index = () => {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total Couriers"
-            value={48}
+            value={stats?.totalCouriers ?? 0}
             icon={Truck}
-            trend={{ value: 12, isPositive: true }}
+            trend={stats?.couriersTrend ?? undefined}
             delay={100}
+            to="/couriers"
           />
           <StatCard
             title="Total Shippers"
-            value={156}
+            value={stats?.totalShippers ?? 0}
             icon={Package}
-            trend={{ value: 8, isPositive: true }}
+            trend={stats?.shippersTrend ?? undefined}
             delay={150}
+            to="/shippers"
           />
           <StatCard
             title="Total Transactions"
-            value="1,234"
+            value={stats?.totalTransactions ?? 0}
             icon={ArrowLeftRight}
-            trend={{ value: 23, isPositive: true }}
+            trend={stats?.transactionsTrend ?? undefined}
             delay={200}
+            to="/analytics?tab=accounting"
           />
           <StatCard
             title="Active Alerts"
-            value={7}
+            value={stats?.activeAlerts ?? 0}
             icon={AlertTriangle}
             variant="warning"
             delay={250}
+            to="/tickets"
           />
         </div>
 
@@ -243,31 +234,35 @@ const Index = () => {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 title="Couriers In Compliance"
-                value={42}
+                value={stats?.couriersCompliant ?? 0}
                 icon={Truck}
                 variant="success"
                 delay={350}
+                to="/couriers?compliance=compliant"
               />
               <StatCard
                 title="Couriers Out of Compliance"
-                value={6}
+                value={stats?.couriersNonCompliant ?? 0}
                 icon={Truck}
                 variant="danger"
                 delay={400}
+                to="/couriers?compliance=non-compliant"
               />
               <StatCard
                 title="Shippers In Compliance"
-                value={148}
+                value={stats?.shippersCompliant ?? 0}
                 icon={Package}
                 variant="success"
                 delay={450}
+                to="/shippers?compliance=compliant"
               />
               <StatCard
                 title="Shippers Out of Compliance"
-                value={8}
+                value={stats?.shippersNonCompliant ?? 0}
                 icon={Package}
                 variant="danger"
                 delay={500}
+                to="/shippers?compliance=non-compliant"
               />
             </div>
           </CardContent>
@@ -276,10 +271,10 @@ const Index = () => {
         {/* Main Content Grid */}
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <RecentActivityTable />
+            <RecentActivityTable activities={recentActivity} />
           </div>
           <div>
-            <AlertsCard />
+            <AlertsCard alerts={alerts} />
           </div>
         </div>
       </div>

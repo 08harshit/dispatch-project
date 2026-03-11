@@ -1,8 +1,20 @@
+import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
 
+const ALLOWED_ROLES = ["shipper", "admin"];
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
+
+  const role = (user?.user_metadata?.role as string) || (user?.app_metadata?.role as string);
+  const hasAccess = user && ALLOWED_ROLES.includes(role);
+
+  useEffect(() => {
+    if (!loading && user && !ALLOWED_ROLES.includes(role)) {
+      signOut();
+    }
+  }, [loading, user, role, signOut]);
 
   if (loading) {
     return (
@@ -13,6 +25,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!user) {
+    return <Navigate to="/landing" replace />;
+  }
+
+  if (!hasAccess) {
     return <Navigate to="/landing" replace />;
   }
 
