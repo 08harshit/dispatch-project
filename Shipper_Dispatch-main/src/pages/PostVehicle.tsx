@@ -146,7 +146,6 @@ const PostVehicle = () => {
     }
 
     // Success - in a real app, this would send to an API
-    console.log("Form submitted:", formData);
     toast({
       title: "Vehicle Posted Successfully",
       description: "Your vehicle listing has been created.",

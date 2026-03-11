@@ -17,6 +17,8 @@ import analyticsRoutes from "./analytics";
 import settingsRoutes from "./settings";
 import invoiceRoutes from "./invoices";
 import savedLoadsRoutes from "./saved-loads";
+import conditionReportsRoutes from "./conditionReports";
+import matchingRoutes from "./matching";
 
 const router = Router();
 
@@ -103,6 +105,8 @@ router.use("/analytics", analyticsRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/invoices", invoiceRoutes);
 router.use("/saved-loads", savedLoadsRoutes);
+router.use("/condition-reports", conditionReportsRoutes);
+router.use("/matching", matchingRoutes);
 // router.use("/vehicles", vehicleRoutes); // MODULE DISABLED
 // router.use("/vehicle-access", vehicleAccessRoutes); // MODULE DISABLED
 

@@ -1,18 +1,18 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
-  ArrowRight, 
-  Truck, 
+import {
+  Clock,
+  CheckCircle,
+  XCircle,
+  ArrowRight,
+  Truck,
   DollarSign,
   Timer,
   AlertCircle,
   Loader2,
   RefreshCw,
   User,
-  Edit
+  Edit,
 } from "lucide-react";
 import {
   Dialog,
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import * as matchingService from "@/services/matchingService";
 import { cn } from "@/lib/utils";
 
 interface HistoryEvent {
@@ -59,6 +59,13 @@ const eventConfig = {
   modification: { icon: Edit, color: "text-cyan-500", bg: "bg-cyan-500/10" },
 };
 
+function getCourierName(obj: { couriers?: { name?: string } | { name?: string }[] }): string | undefined {
+  const c = obj.couriers;
+  if (!c) return undefined;
+  if (Array.isArray(c)) return c[0]?.name;
+  return (c as { name?: string }).name;
+}
+
 const MatchingHistoryModal = ({
   open,
   onOpenChange,
@@ -74,157 +81,120 @@ const MatchingHistoryModal = ({
     const fetchHistory = async () => {
       setLoading(true);
       try {
-        const db = supabase as any;
-        
-        // Fetch activity log
-        const { data: activityLog } = await db
-          .from("activity_log")
-          .select("*")
-          .eq("lead_id", leadId)
-          .order("created_at", { ascending: true });
-
-        // Fetch notifications
-        const { data: notifications } = await db
-          .from("driver_notifications")
-          .select(`
-            id, status, created_at, responded_at, offer_amount,
-            courier:couriers(name)
-          `)
-          .eq("lead_id", leadId)
-          .order("created_at", { ascending: true });
-
-        // Fetch negotiations
-        const { data: negotiations } = await db
-          .from("negotiations")
-          .select(`
-            id, status, created_at, accepted_at, current_offer,
-            courier:couriers(name),
-            offers(id, amount, offered_by, response, created_at)
-          `)
-          .eq("lead_id", leadId)
-          .order("created_at", { ascending: true });
-
-        // Fetch matching requests
-        const { data: matchingRequests } = await db
-          .from("matching_requests")
-          .select("id, status, created_at, initial_offer")
-          .eq("lead_id", leadId)
-          .order("created_at", { ascending: true });
+        const { activity, notifications, matchingRequests } = await matchingService.getMatchingHistory(leadId);
 
         const historyEvents: HistoryEvent[] = [];
 
-        // Process activity log entries
-        (activityLog || []).forEach((log: any) => {
+        (activity || []).forEach((log: Record<string, unknown>) => {
           const isStatusChange = log.action_type === "status_change";
           historyEvents.push({
             id: `log-${log.id}`,
             type: isStatusChange ? "status_change" : "modification",
-            timestamp: log.created_at,
-            performedBy: log.performed_by,
-            previousValue: log.previous_value,
-            newValue: log.new_value,
-            details: log.notes || (isStatusChange 
+            timestamp: (log.created_at as string) ?? "",
+            performedBy: log.performed_by as string | undefined,
+            previousValue: log.previous_value as string | undefined,
+            newValue: log.new_value as string | undefined,
+            details: (log.notes as string) || (isStatusChange
               ? `Status changed from "${log.previous_value}" to "${log.new_value}"`
               : `${log.action_type}: ${log.new_value}`),
           });
         });
 
-        // Process notifications
-        (notifications || []).forEach((n: any) => {
+        (notifications || []).forEach((n: Record<string, unknown>) => {
+          const courierName = getCourierName(n as { couriers?: { name?: string } });
           historyEvents.push({
             id: `notif-${n.id}`,
             type: "notification_sent",
-            timestamp: n.created_at,
-            courierName: n.courier?.name,
-            amount: n.offer_amount,
-            details: `Offer sent to ${n.courier?.name}`,
+            timestamp: (n.created_at as string) ?? "",
+            courierName,
+            amount: n.offer_amount as number | undefined,
+            details: `Offer sent to ${courierName ?? "courier"}`,
           });
 
           if (n.status === "accepted" && n.responded_at) {
             historyEvents.push({
               id: `notif-accept-${n.id}`,
               type: "accepted",
-              timestamp: n.responded_at,
-              courierName: n.courier?.name,
-              details: `${n.courier?.name} accepted the offer`,
+              timestamp: n.responded_at as string,
+              courierName,
+              details: `${courierName ?? "Courier"} accepted the offer`,
             });
           } else if (n.status === "declined" && n.responded_at) {
             historyEvents.push({
               id: `notif-decline-${n.id}`,
               type: "declined",
-              timestamp: n.responded_at,
-              courierName: n.courier?.name,
-              details: `${n.courier?.name} declined`,
+              timestamp: n.responded_at as string,
+              courierName,
+              details: `${courierName ?? "Courier"} declined`,
             });
           } else if (n.status === "expired") {
             historyEvents.push({
               id: `notif-expire-${n.id}`,
               type: "expired",
-              timestamp: n.responded_at || n.created_at,
-              courierName: n.courier?.name,
-              details: `No response from ${n.courier?.name}`,
+              timestamp: (n.responded_at as string) || (n.created_at as string),
+              courierName,
+              details: `No response from ${courierName ?? "courier"}`,
             });
           }
         });
 
-        // Process negotiations
-        (negotiations || []).forEach((neg: any) => {
+        const negRes = await matchingService.listNegotiations(leadId);
+        (negRes || []).forEach((neg: matchingService.Negotiation) => {
+          const courierData = neg.couriers;
+          const courierName = Array.isArray(courierData) ? courierData[0]?.name : (courierData as { name?: string })?.name;
+
           historyEvents.push({
             id: `neg-start-${neg.id}`,
             type: "negotiating",
-            timestamp: neg.created_at,
-            courierName: neg.courier?.name,
-            details: `Negotiation started with ${neg.courier?.name}`,
+            timestamp: neg.negotiation_started_at ?? neg.created_at ?? "",
+            courierName,
+            details: `Negotiation started with ${courierName ?? "courier"}`,
           });
 
-          // Add offers
-          (neg.offers || []).forEach((offer: any) => {
+          (neg.offers || []).forEach((offer: { id: string; created_at?: string; amount?: number; offered_by?: string }) => {
             historyEvents.push({
               id: `offer-${offer.id}`,
               type: offer.offered_by === "shipper" ? "offer" : "counter",
-              timestamp: offer.created_at,
+              timestamp: offer.created_at ?? "",
               amount: offer.amount,
-              details: `${offer.offered_by === "shipper" ? "You" : neg.courier?.name} offered $${offer.amount}`,
+              details: `${offer.offered_by === "shipper" ? "You" : courierName ?? "Courier"} offered $${offer.amount ?? 0}`,
             });
           });
 
-          if (neg.status === "accepted" && neg.accepted_at) {
+          if (neg.status === "accepted" && (neg as { accepted_at?: string }).accepted_at) {
             historyEvents.push({
               id: `neg-accept-${neg.id}`,
               type: "booked",
-              timestamp: neg.accepted_at,
-              courierName: neg.courier?.name,
-              amount: neg.current_offer,
-              details: `Booked with ${neg.courier?.name} for $${neg.current_offer}`,
+              timestamp: (neg as { accepted_at?: string }).accepted_at ?? "",
+              courierName,
+              amount: neg.current_offer ?? undefined,
+              details: `Booked with ${courierName ?? "courier"} for $${neg.current_offer ?? 0}`,
             });
           }
         });
 
-        // Process matching requests for failed/cancelled
-        (matchingRequests || []).forEach((mr: any) => {
+        (matchingRequests || []).forEach((mr: Record<string, unknown>) => {
           if (mr.status === "failed") {
             historyEvents.push({
               id: `mr-fail-${mr.id}`,
               type: "failed",
-              timestamp: mr.created_at,
+              timestamp: (mr.created_at as string) ?? "",
               details: "No drivers available",
             });
           } else if (mr.status === "cancelled") {
             historyEvents.push({
               id: `mr-cancel-${mr.id}`,
               type: "cancelled",
-              timestamp: mr.created_at,
+              timestamp: (mr.created_at as string) ?? "",
               details: "Search cancelled",
             });
           }
         });
 
-        // Sort by timestamp
         historyEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
         setEvents(historyEvents);
-      } catch (err) {
-        console.error("Error fetching history:", err);
+      } catch {
+        setEvents([]);
       } finally {
         setLoading(false);
       }
@@ -239,7 +209,7 @@ const MatchingHistoryModal = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-primary" />
-            Historique des modifications
+            Change History
             {listingId && (
               <Badge variant="outline" className="ml-2 font-mono">
                 {listingId}
@@ -256,39 +226,38 @@ const MatchingHistoryModal = ({
           ) : events.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Aucun historique disponible</p>
+              <p>No history available</p>
             </div>
           ) : (
             <div className="relative">
-              {/* Timeline line */}
               <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
-              
+
               <div className="space-y-4">
                 {events.map((event) => {
                   const config = eventConfig[event.type];
                   const Icon = config.icon;
-                  
+
                   return (
                     <div key={event.id} className="relative pl-10">
-                      {/* Timeline dot */}
-                      <div className={cn(
-                        "absolute left-0 w-8 h-8 rounded-full flex items-center justify-center",
-                        config.bg
-                      )}>
+                      <div
+                        className={cn(
+                          "absolute left-0 w-8 h-8 rounded-full flex items-center justify-center",
+                          config.bg
+                        )}
+                      >
                         <Icon className={cn("h-4 w-4", config.color)} />
                       </div>
-                      
+
                       <div className="bg-card border rounded-lg p-3 space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <p className="font-medium text-sm">{event.details}</p>
-                          {event.amount && (
+                          {event.amount != null && (
                             <Badge variant="secondary" className="font-mono shrink-0">
                               ${event.amount.toLocaleString()}
                             </Badge>
                           )}
                         </div>
-                        
-                        {/* Show previous/new values for modifications */}
+
                         {(event.previousValue || event.newValue) && (
                           <div className="flex items-center gap-2 text-xs">
                             {event.previousValue && (
@@ -306,10 +275,10 @@ const MatchingHistoryModal = ({
                             )}
                           </div>
                         )}
-                        
+
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>
-                            {format(new Date(event.timestamp), "dd MMM yyyy 'à' HH:mm")}
+                            {format(new Date(event.timestamp), "dd MMM yyyy 'at' HH:mm")}
                           </span>
                           {event.performedBy && (
                             <span className="flex items-center gap-1">

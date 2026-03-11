@@ -604,7 +604,6 @@ const Shipping = () => {
             setSelectedVehicle(v);
             setAssignModalOpen(true);
           }}
-          onChain={(v) => console.log("Chain:", v)}
           onHistory={(v) => {
             setHistoryListingId(v.listingId);
             setHistoryLeadId(v.id);

@@ -9,8 +9,18 @@ import { validateBody, validateUuidParam } from "../utils/validate";
 import * as loadService from "../services/loadService";
 import { resolveShipperId } from "../utils/authHelpers";
 import { supabaseAdmin } from "../config/supabase";
+import * as shipmentDocumentRepo from "../repos/shipmentDocumentRepo";
+import { isMissingTableError } from "../utils/dbError";
 
 const router = Router();
+
+async function verifyLeadShipperAccess(leadId: string, req: Request): Promise<boolean> {
+    const shipperId = req.query.shipper_id as string | undefined
+        || (req.user?.id ? await resolveShipperId(supabaseAdmin, req.user.id) : null);
+    if (!shipperId) return false;
+    const { data: lead } = await supabaseAdmin.from("leads").select("shipper_id").eq("id", leadId).single();
+    return !!(lead && (lead as { shipper_id: string | null }).shipper_id === shipperId);
+}
 type IdParams = { id: string };
 type DocParams = { id: string; docId: string };
 
@@ -297,6 +307,137 @@ router.delete("/:id/documents/:docId", validateUuidParam("id"), validateUuidPara
         await loadService.removeLoadDocument(req.params.id, req.params.docId);
         res.json({ success: true, message: "Document deleted" });
     } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// --- Shipment documents (shipment_documents table, shipper-scoped) ---
+
+router.get("/:id/shipment-documents", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const ok = await verifyLeadShipperAccess(req.params.id, req);
+        if (!ok) return res.status(403).json({ success: false, error: "Not authorized to access this load" });
+
+        const docs = await shipmentDocumentRepo.findByLeadId(req.params.id);
+        const data = docs.map((d: any) => ({
+            id: d.id,
+            leadId: d.lead_id,
+            courierId: d.courier_id,
+            documentType: d.document_type,
+            fileName: d.file_name,
+            fileUrl: d.file_url,
+            fileSize: d.file_size,
+            mimeType: d.mime_type,
+            notes: d.notes,
+            uploadedBy: d.uploaded_by,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+            courierName: d.courier_name,
+        }));
+        res.json({ success: true, data });
+    } catch (err: any) {
+        if (isMissingTableError(err)) return res.json({ success: true, data: [] });
+        logger.error({ err }, "Error in GET /loads/:id/shipment-documents");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.post("/:id/shipment-documents", validateUuidParam("id"), async (req: Request<IdParams>, res: Response) => {
+    try {
+        const ok = await verifyLeadShipperAccess(req.params.id, req);
+        if (!ok) return res.status(403).json({ success: false, error: "Not authorized to access this load" });
+
+        const body = req.body || {};
+        const { documentType, fileName, fileUrl, fileSize, mimeType, notes, uploadedBy, data: base64Data } = body;
+        if (!documentType || !fileName) {
+            return res.status(400).json({ success: false, error: "documentType and fileName are required" });
+        }
+
+        let finalUrl = fileUrl;
+        if (!finalUrl && base64Data) {
+            const buf = Buffer.from(base64Data, "base64");
+            const storagePath = `${req.params.id}/${documentType}-${Date.now()}-${fileName}`;
+            const { error: uploadErr } = await supabaseAdmin.storage
+                .from("shipment-documents")
+                .upload(storagePath, buf, { contentType: mimeType || "application/octet-stream", upsert: true });
+            if (uploadErr) {
+                logger.error({ err: uploadErr }, "Error uploading shipment document");
+                return res.status(500).json({ success: false, error: uploadErr.message });
+            }
+            const { data: urlData } = supabaseAdmin.storage.from("shipment-documents").getPublicUrl(storagePath);
+            finalUrl = urlData.publicUrl;
+        }
+        if (!finalUrl) return res.status(400).json({ success: false, error: "fileUrl or data (base64) required" });
+
+        const doc = await shipmentDocumentRepo.create({
+            lead_id: req.params.id,
+            document_type: documentType,
+            file_name: fileName,
+            file_url: finalUrl,
+            file_size: fileSize ?? null,
+            mime_type: mimeType ?? null,
+            notes: notes ?? null,
+            uploaded_by: uploadedBy ?? "shipper",
+        });
+
+        res.status(201).json({
+            success: true,
+            data: {
+                id: doc.id,
+                leadId: doc.lead_id,
+                courierId: doc.courier_id,
+                documentType: doc.document_type,
+                fileName: doc.file_name,
+                fileUrl: doc.file_url,
+                fileSize: doc.file_size,
+                mimeType: doc.mime_type,
+                notes: doc.notes,
+                uploadedBy: doc.uploaded_by,
+                createdAt: doc.created_at,
+                updatedAt: doc.updated_at,
+            },
+        });
+    } catch (err: any) {
+        if (isMissingTableError(err)) return res.status(503).json({ success: false, error: "Service unavailable" });
+        logger.error({ err }, "Error in POST /loads/:id/shipment-documents");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.delete("/:id/shipment-documents/:docId", validateUuidParam("id"), validateUuidParam("docId"), async (req: Request<DocParams>, res: Response) => {
+    try {
+        const ok = await verifyLeadShipperAccess(req.params.id, req);
+        if (!ok) return res.status(403).json({ success: false, error: "Not authorized to access this load" });
+
+        const doc = await shipmentDocumentRepo.findById(req.params.docId);
+        if (!doc || doc.lead_id !== req.params.id) return res.status(404).json({ success: false, error: "Document not found" });
+
+        const urlParts = doc.file_url?.split("/shipment-documents/");
+        const filePath = urlParts && urlParts.length > 1 ? urlParts[1].split("?")[0] : null;
+        if (filePath) {
+            await supabaseAdmin.storage.from("shipment-documents").remove([filePath]).catch(() => {});
+        }
+
+        await shipmentDocumentRepo.deleteById(req.params.docId);
+        res.json({ success: true, message: "Document deleted" });
+    } catch (err: any) {
+        if (isMissingTableError(err)) return res.status(503).json({ success: false, error: "Service unavailable" });
+        logger.error({ err }, "Error in DELETE /loads/:id/shipment-documents/:docId");
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.get("/:id/shipment-documents/:docId/download", validateUuidParam("id"), validateUuidParam("docId"), async (req: Request<DocParams>, res: Response) => {
+    try {
+        const ok = await verifyLeadShipperAccess(req.params.id, req);
+        if (!ok) return res.status(403).json({ success: false, error: "Not authorized to access this load" });
+
+        const doc = await shipmentDocumentRepo.findById(req.params.docId);
+        if (!doc || doc.lead_id !== req.params.id) return res.status(404).json({ success: false, error: "Document not found" });
+
+        res.json({ success: true, data: { url: doc.file_url } });
+    } catch (err: any) {
+        logger.error({ err }, "Error in GET /loads/:id/shipment-documents/:docId/download");
         res.status(500).json({ success: false, error: err.message });
     }
 });
