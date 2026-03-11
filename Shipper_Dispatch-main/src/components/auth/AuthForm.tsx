@@ -63,14 +63,26 @@ const AuthForm = () => {
         toast({ title: "Password updated", description: "You can now sign in." });
         setView("login");
       } else if (view === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        const user = data?.user;
+        const role = (user?.user_metadata?.role as string) || (user?.app_metadata?.role as string);
+        if (role !== "shipper" && role !== "admin") {
+          await supabase.auth.signOut();
+          toast({
+            title: "Access denied",
+            description: "You do not have access to the Shipper portal. Please use the Courier or Admin portal.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
       } else {
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { full_name: fullName, company_name: companyName },
+            data: { full_name: fullName, company_name: companyName, role: "shipper" },
             emailRedirectTo: window.location.origin,
           },
         });
