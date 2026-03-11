@@ -502,7 +502,7 @@ router.get("/courier/costs", async (req: Request, res: Response) => {
         const { dateFrom, dateTo, category } = req.query;
         if (dateFrom && typeof dateFrom === "string") query = query.gte("date", `${dateFrom}T00:00:00.000Z`);
         if (dateTo && typeof dateTo === "string") query = query.lte("date", `${dateTo}T23:59:59.999Z`);
-        if (category && typeof category === "string" && COURIER_COST_CATEGORIES.includes(category as any)) {
+        if (category && typeof category === "string" && (COURIER_COST_CATEGORIES as readonly string[]).includes(category)) {
             query = query.eq("category", category);
         }
 
@@ -534,7 +534,7 @@ router.post("/courier/costs", async (req: Request, res: Response) => {
         if (amount == null || !category || !date) {
             return res.status(400).json({ success: false, error: "amount, category, and date are required" });
         }
-        if (!COURIER_COST_CATEGORIES.includes(category)) {
+        if (!(COURIER_COST_CATEGORIES as readonly string[]).includes(category)) {
             return res.status(400).json({ success: false, error: `category must be one of: ${COURIER_COST_CATEGORIES.join(", ")}` });
         }
 
@@ -593,7 +593,7 @@ router.patch("/courier/costs/:id", validateUuidParam("id"), async (req: Request<
             const val = body[camel] ?? body[f];
             if (val !== undefined) updates[f] = val;
         }
-        if (updates.category && !COURIER_COST_CATEGORIES.includes(updates.category as string)) {
+        if (updates.category && !(COURIER_COST_CATEGORIES as readonly string[]).includes(updates.category as string)) {
             return res.status(400).json({ success: false, error: `category must be one of: ${COURIER_COST_CATEGORIES.join(", ")}` });
         }
         if (Object.keys(updates).length === 0) {
