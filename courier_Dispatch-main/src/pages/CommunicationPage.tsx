@@ -20,34 +20,12 @@ const tabs: { id: CommTab; label: string; icon: typeof MessageCircle; gradient: 
 
 interface CallItem { id: number; contact: string; number: string; type: "incoming" | "outgoing" | "missed"; duration: string; time: string }
 
-const initialMessages: MessageItem[] = [
-  { id: 1, from: "Mike's Transport", preview: "I'll be at pickup in 20 minutes", time: "2 min ago", unread: true, loadId: "LD-024", unreadCount: 2, initials: "MT" },
-  { id: 2, from: "FastHaul LLC", preview: "BOL has been uploaded", time: "15 min ago", unread: true, loadId: "LD-019", initials: "FH" },
-  { id: 3, from: "Express Auto Carriers", preview: "Vehicle delivered successfully", time: "1 hr ago", unread: false, loadId: "LD-022", initials: "EA" },
-  { id: 4, from: "Summit Logistics", preview: "Need updated delivery address", time: "3 hr ago", unread: true, loadId: "LD-018", unreadCount: 1, initials: "SL" },
-  { id: 5, from: "Prime Auto Ship", preview: "Please update the BOL with the correct VIN", time: "5 hr ago", unread: false, loadId: "LD-015", initials: "PA" },
-];
-
-const initialEmails: EmailItem[] = [
-  { id: 1, from: "dispatch@primecarriers.com", subject: "Load Confirmation #8834", preview: "Your load has been confirmed. Please review the attached BOL...", time: "10m ago", unread: true },
-  { id: 2, from: "billing@autoship.com", subject: "Payment Received - Invoice #2291", preview: "We have processed your payment of $1,250.00...", time: "45m ago", unread: true },
-  { id: 3, from: "ops@expresslogistics.com", subject: "Route Update - I-95 Closure", preview: "Please be advised of a route change due to construction...", time: "2h ago", unread: false },
-  { id: 4, from: "support@safehavl.com", subject: "Document Upload Required", preview: "Please upload the signed VCR for load #7721...", time: "4h ago", unread: false },
-];
-
-const initialCalls: CallItem[] = [
-  { id: 1, contact: "John's Auto Transport", number: "(555) 123-4567", type: "incoming", duration: "4:32", time: "30m ago" },
-  { id: 2, contact: "Express Logistics", number: "(555) 987-6543", type: "outgoing", duration: "2:15", time: "2h ago" },
-  { id: 3, contact: "Prime Carriers", number: "(555) 456-7890", type: "missed", duration: "-", time: "3h ago" },
-  { id: 4, contact: "AutoShip Pro", number: "(555) 321-0987", type: "incoming", duration: "8:45", time: "Yesterday" },
-];
-
 export const CommunicationPage = () => {
   const [activeTab, setActiveTab] = useState<CommTab>("messages");
   const [searchQuery, setSearchQuery] = useState("");
-  const [messages, setMessages] = useState<MessageItem[]>(initialMessages);
-  const [emails, setEmails] = useState<EmailItem[]>(initialEmails);
-  const [calls, setCalls] = useState<CallItem[]>(initialCalls);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [calls, setCalls] = useState<CallItem[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCall, setSelectedCall] = useState<CallItem | null>(null);
 
@@ -158,7 +136,15 @@ export const CommunicationPage = () => {
           <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
             <ScrollArea className="max-h-[500px]">
               <div className="divide-y divide-stone-50">
-                {calls.filter((c) => !searchQuery || c.contact.toLowerCase().includes(searchQuery.toLowerCase()) || c.number.includes(searchQuery)).map((call) => (
+                {calls.filter((c) => !searchQuery || c.contact.toLowerCase().includes(searchQuery.toLowerCase()) || c.number.includes(searchQuery)).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center px-8">
+                    <div className="p-4 rounded-2xl bg-stone-50 mb-4">
+                      <Phone className="h-8 w-8 text-stone-400" />
+                    </div>
+                    <p className="text-lg font-semibold text-stone-700">No calls yet</p>
+                    <p className="text-sm text-stone-500 mt-1 max-w-xs">Your call history with shippers will appear here.</p>
+                  </div>
+                ) : calls.filter((c) => !searchQuery || c.contact.toLowerCase().includes(searchQuery.toLowerCase()) || c.number.includes(searchQuery)).map((call) => (
                   <div key={call.id} onClick={() => setSelectedCall(call)} className="flex items-center gap-4 p-4 hover:bg-stone-50/50 transition-colors cursor-pointer">
                     <div className={cn(
                       "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0",

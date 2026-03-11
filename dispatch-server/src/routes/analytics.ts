@@ -249,6 +249,144 @@ router.get("/courier-performance", async (_req: Request, res: Response) => {
     }
 });
 
+async function resolveCourierIdForAnalytics(req: Request): Promise<string | null> {
+    const courierId = req.query.courier_id as string | undefined;
+    if (courierId) return courierId;
+    return req.user?.id ? await resolveCourierId(supabaseAdmin, req.user.id) : null;
+}
+
+router.get("/courier/top-routes", async (req: Request, res: Response) => {
+    try {
+        const courierId = await resolveCourierIdForAnalytics(req);
+        if (!courierId) {
+            return res.status(401).json({ success: false, error: "Courier not found for user" });
+        }
+
+        const contractIds = await getCourierContractIds(courierId);
+        if (contractIds.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const { data: contracts, error: contractsErr } = await supabaseAdmin
+            .from("contracts")
+            .select("id, lead_id")
+            .in("id", contractIds);
+        if (contractsErr || !contracts?.length) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const leadIds = [...new Set((contracts as { lead_id: string }[]).map((c) => c.lead_id).filter(Boolean))];
+        if (leadIds.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const { data: leads, error: leadsErr } = await supabaseAdmin
+            .from("leads")
+            .select("id, pickup_address, delivery_address")
+            .in("id", leadIds);
+        if (leadsErr || !leads?.length) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const { data: invoices } = await supabaseAdmin
+            .from("invoices")
+            .select("contract_id, amount")
+            .in("contract_id", contractIds);
+        const contractToAmount = new Map<string, number>();
+        for (const inv of invoices || []) {
+            const cid = (inv as { contract_id: string }).contract_id;
+            contractToAmount.set(cid, (contractToAmount.get(cid) ?? 0) + (parseFloat(String((inv as { amount: string }).amount)) || 0));
+        }
+
+        const leadMap = new Map((leads as { id: string; pickup_address: string; delivery_address: string }[]).map((l) => [l.id, { from: l.pickup_address || "Unknown", to: l.delivery_address || "Unknown" }]));
+        const contractToLead = new Map((contracts as { id: string; lead_id: string }[]).map((c) => [c.id, c.lead_id]));
+
+        const routeKey = (from: string, to: string) => `${from}|||${to}`;
+        const routeCount: Record<string, number> = {};
+        const routeCost: Record<string, number> = {};
+        const routeDisplay: Record<string, { from: string; to: string }> = {};
+
+        for (const c of contracts as { id: string; lead_id: string }[]) {
+            const ld = leadMap.get(c.lead_id);
+            if (!ld) continue;
+            const key = routeKey(ld.from, ld.to);
+            routeCount[key] = (routeCount[key] ?? 0) + 1;
+            routeCost[key] = (routeCost[key] ?? 0) + (contractToAmount.get(c.id) ?? 0);
+            routeDisplay[key] = ld;
+        }
+
+        const data = Object.entries(routeCount)
+            .map(([key, count]) => ({
+                route: `${routeDisplay[key]?.from ?? "Unknown"} -> ${routeDisplay[key]?.to ?? "Unknown"}`,
+                loads: count,
+                revenue: `$${(routeCost[key] ?? 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+                growth: "+0%",
+            }))
+            .sort((a, b) => b.loads - a.loads)
+            .slice(0, 10);
+
+        res.json({ success: true, data });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /analytics/courier/top-routes");
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
+});
+
+router.get("/courier/load-types", async (req: Request, res: Response) => {
+    try {
+        const courierId = await resolveCourierIdForAnalytics(req);
+        if (!courierId) {
+            return res.status(401).json({ success: false, error: "Courier not found for user" });
+        }
+
+        const contractIds = await getCourierContractIds(courierId);
+        if (contractIds.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const { data: contracts, error: contractsErr } = await supabaseAdmin
+            .from("contracts")
+            .select("lead_id")
+            .in("id", contractIds);
+        if (contractsErr || !contracts?.length) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const leadIds = [...new Set((contracts as { lead_id: string }[]).map((c) => c.lead_id).filter(Boolean))];
+        if (leadIds.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const { data: leads, error: leadsErr } = await supabaseAdmin
+            .from("leads")
+            .select("vehicle_type")
+            .in("id", leadIds);
+        if (leadsErr || !leads?.length) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const typeCount: Record<string, number> = {};
+        for (const l of leads as { vehicle_type: string | null }[]) {
+            const t = l.vehicle_type || "Other";
+            typeCount[t] = (typeCount[t] ?? 0) + 1;
+        }
+        const total = Object.values(typeCount).reduce((a, b) => a + b, 0) || 1;
+        const colors = ["bg-amber-200", "bg-emerald-200", "bg-orange-200", "bg-teal-200", "bg-stone-200"];
+        const data = Object.entries(typeCount)
+            .map(([type, count], i) => ({
+                type,
+                percentage: Math.round((count / total) * 100),
+                color: colors[i % colors.length],
+            }))
+            .sort((a, b) => b.percentage - a.percentage);
+
+        res.json({ success: true, data });
+    } catch (err: unknown) {
+        logger.error({ err }, "Error in GET /analytics/courier/load-types");
+        res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
+});
+
 // --- Shipper-scoped analytics ---
 
 async function resolveShipperIdForRequest(req: Request): Promise<string | null> {

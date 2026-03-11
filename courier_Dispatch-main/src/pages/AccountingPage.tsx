@@ -8,7 +8,14 @@ import { AddRevenueDialog } from "@/components/accounting/AddRevenueDialog";
 import { EditRevenueDialog } from "@/components/accounting/EditRevenueDialog";
 import { EditCostDialog } from "@/components/accounting/EditCostDialog";
 import { SearchFilterBar } from "@/components/filters/SearchFilterBar";
-import { useAccountingStatsQuery, useAccountingTransactionsQuery } from "@/hooks/queries/useAccounting";
+import {
+  useAccountingStatsQuery,
+  useAccountingTransactionsQuery,
+  useCourierCostsQuery,
+  useCreateCourierCostMutation,
+  useUpdateCourierCostMutation,
+  useDeleteCourierCostMutation,
+} from "@/hooks/queries/useAccounting";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { parse, isWithinInterval, isAfter, isBefore } from "date-fns";
@@ -29,10 +36,13 @@ function transactionToRevenueRecord(t: { id: string; date: string; description: 
 export const AccountingPage = () => {
   const [activeTab, setActiveTab] = useState<"revenue" | "costs">("revenue");
   const [revenueRecords, setRevenueRecords] = useState<RevenueRecord[]>([]);
-  const [costRecords, setCostRecords] = useState<CostRecord[]>([]);
 
   const { data: stats } = useAccountingStatsQuery();
   const { data: transactions } = useAccountingTransactionsQuery({ type: "income" });
+  const { data: costRecords = [], isLoading: costsLoading } = useCourierCostsQuery();
+  const createCostMutation = useCreateCourierCostMutation();
+  const updateCostMutation = useUpdateCourierCostMutation();
+  const deleteCostMutation = useDeleteCourierCostMutation();
 
   useEffect(() => {
     if (transactions) setRevenueRecords(transactions.map(transactionToRevenueRecord));
@@ -127,14 +137,34 @@ export const AccountingPage = () => {
     setEditCostRecord(record);
   };
 
-  const handleSaveCost = (updated: CostRecord) => {
-    setCostRecords((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-    toast.success("Cost updated successfully");
+  const handleSaveCost = async (updated: CostRecord) => {
+    try {
+      await updateCostMutation.mutateAsync({
+        id: updated.id,
+        body: {
+          amount: updated.amount,
+          category: updated.category,
+          description: updated.description,
+          date: updated.date,
+          paymentMethod: updated.paymentMethod,
+          hasDocs: updated.hasDocs,
+          invoiceUrl: updated.invoiceUrl,
+          invoiceName: updated.invoiceName,
+        },
+      });
+      toast.success("Cost updated successfully");
+    } catch {
+      toast.error("Failed to update cost");
+    }
   };
 
-  const handleDeleteCost = (recordId: string) => {
-    setCostRecords((prev) => prev.filter((r) => r.id !== recordId));
-    toast.success("Cost record deleted");
+  const handleDeleteCost = async (recordId: string) => {
+    try {
+      await deleteCostMutation.mutateAsync(recordId);
+      toast.success("Cost record deleted");
+    } catch {
+      toast.error("Failed to delete cost");
+    }
   };
 
   const handleViewCost = (record: CostRecord) => {
@@ -158,13 +188,22 @@ export const AccountingPage = () => {
     toast.success("Revenue added (local only; backend has no create endpoint)");
   };
 
-  const handleAddCost = (newCost: Omit<CostRecord, "id">) => {
-    const record: CostRecord = {
-      ...newCost,
-      id: crypto.randomUUID(),
-    };
-    setCostRecords((prev) => [record, ...prev]);
-    toast.success("Cost added (local only; costs table not in backend yet)");
+  const handleAddCost = async (newCost: Omit<CostRecord, "id">) => {
+    try {
+      await createCostMutation.mutateAsync({
+        amount: newCost.amount,
+        category: newCost.category,
+        description: newCost.description,
+        date: newCost.date,
+        paymentMethod: newCost.paymentMethod,
+        hasDocs: newCost.hasDocs,
+        invoiceUrl: newCost.invoiceUrl,
+        invoiceName: newCost.invoiceName,
+      });
+      toast.success("Cost added successfully");
+    } catch {
+      toast.error("Failed to add cost");
+    }
   };
 
   const handleClearFilters = () => {
@@ -256,6 +295,7 @@ export const AccountingPage = () => {
         open={addCostOpen}
         onOpenChange={setAddCostOpen}
         onAdd={handleAddCost}
+        isSubmitting={createCostMutation.isPending}
       />
 
       {/* Add Revenue Dialog */}

@@ -16,7 +16,7 @@ interface EditCostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   record: CostRecord | null;
-  onSave: (record: CostRecord) => void;
+  onSave: (record: CostRecord) => void | Promise<void>;
 }
 
 const categories = [
@@ -42,20 +42,21 @@ export const EditCostDialog = ({ open, onOpenChange, record, onSave }: EditCostD
       setAmount(record.amount.toString());
       setCategory(record.category);
       setDescription(record.description);
-      const [month, day, year] = record.date.split("-");
-      setDate(`${year}-${month}-${day}`);
+      const parts = record.date.split("-");
+      const isIso = parts[0]?.length === 4;
+      setDate(isIso ? record.date.split("T")[0] : `${parts[2]}-${parts[0]}-${parts[1]}`);
       setPaymentMethod(record.paymentMethod);
     }
   }, [record]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || !description || !record) return;
 
-    const [year, month, day] = date.split("-");
-    const formattedDate = `${month}-${day}-${year}`;
+    const parts = date.split("-");
+    const formattedDate = parts[0]?.length === 4 ? date : `${parts[2]}-${parts[0]}-${parts[1]}`;
 
-    onSave({
+    await onSave({
       ...record,
       amount: parseFloat(amount),
       category,

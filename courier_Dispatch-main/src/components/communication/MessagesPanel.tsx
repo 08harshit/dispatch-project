@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Search, Phone, MoreVertical, Paperclip, Send, User, Trash2, VolumeX, Pin, Image } from "lucide-react";
+import { Search, Phone, MoreVertical, Paperclip, Send, User, Trash2, VolumeX, Pin, Image, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -307,6 +307,14 @@ export const MessagesPanel = ({ messages, searchQuery, onSearchChange, onMarkRea
               </Button>
             </div>
           </>
+        ) : messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div className="p-4 rounded-2xl bg-stone-50 mb-4">
+              <MessageCircle className="h-8 w-8 text-stone-400" />
+            </div>
+            <p className="text-lg font-semibold text-stone-700">No messages yet</p>
+            <p className="text-sm text-stone-500 mt-1 max-w-xs">When shippers reach out, your conversations will appear here.</p>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">
             Select a conversation to start messaging
