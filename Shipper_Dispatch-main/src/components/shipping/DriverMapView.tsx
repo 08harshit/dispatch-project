@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { supabase } from "@/integrations/supabase/client";
+import * as matchingService from "@/services/matchingService";
 import { MapPin, Navigation, Truck, Loader2, Locate, ZoomIn, ZoomOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -116,42 +116,19 @@ const DriverMapView = ({
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
-        const db = supabase as any;
-        const { data, error } = await db
-          .from("couriers")
-          .select("id, name, latitude, longitude, is_available, available_capacity")
-          .eq("is_available", true)
-          .not("latitude", "is", null)
-          .not("longitude", "is", null);
-
-        if (error) throw error;
-
-        const driversWithDistance = (data || []).map((d: any) => {
-          const R = 6371000;
-          const dLat = ((d.latitude - pickupLatitude) * Math.PI) / 180;
-          const dLon = ((d.longitude - pickupLongitude) * Math.PI) / 180;
-          const a =
-            Math.sin(dLat / 2) ** 2 +
-            Math.cos((pickupLatitude * Math.PI) / 180) *
-              Math.cos((d.latitude * Math.PI) / 180) *
-              Math.sin(dLon / 2) ** 2;
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distance = R * c;
-
-          return {
-            id: d.id,
-            name: d.name,
-            latitude: d.latitude,
-            longitude: d.longitude,
-            distance,
-            isAvailable: d.is_available,
-            capacity: d.available_capacity || 0,
-          };
-        });
-
-        setDrivers(driversWithDistance.sort((a: Driver, b: Driver) => a.distance - b.distance));
-      } catch (err) {
-        console.error("Error fetching drivers:", err);
+        const data = await matchingService.getNearbyDrivers(pickupLatitude, pickupLongitude, 50000);
+        const driversWithDistance: Driver[] = data.map((d) => ({
+          id: d.id,
+          name: d.name,
+          latitude: d.latitude,
+          longitude: d.longitude,
+          distance: d.distance,
+          isAvailable: d.is_available,
+          capacity: 0,
+        }));
+        setDrivers(driversWithDistance.sort((a, b) => a.distance - b.distance));
+      } catch {
+        setDrivers([]);
       } finally {
         setLoading(false);
       }

@@ -30,8 +30,7 @@ import ConditionReportForm from "./ConditionReportForm";
 import ConditionReportUpload from "./ConditionReportUpload";
 import ConditionReportPreview from "./ConditionReportPreview";
 import { ConditionReport, createEmptyConditionReport } from "@/types/conditionReport";
-import { createExampleConditionReport } from "@/data/exampleConditionReport";
-import { useConditionReport, useSaveConditionReport, useDeleteConditionReport } from "@/hooks/useConditionReports";
+import { useConditionReport, useSaveConditionReport, useDeleteConditionReport, useUploadConditionReportPdf } from "@/hooks/useConditionReports";
 
 interface ConditionReportModalProps {
   open: boolean;
@@ -57,15 +56,14 @@ const ConditionReportModal = ({
   onSave,
   onDelete,
 }: ConditionReportModalProps) => {
-  // Fetch existing report from database
   const { data: dbReport, isLoading } = useConditionReport(vehicleId);
   const saveReportMutation = useSaveConditionReport();
   const deleteReportMutation = useDeleteConditionReport();
+  const uploadPdfMutation = useUploadConditionReportPdf();
 
-  // Use example report for demonstration if no existing report
   const [activeTab, setActiveTab] = useState<'form' | 'upload' | 'preview'>('preview');
   const [report, setReport] = useState<ConditionReport>(
-    existingReport || createExampleConditionReport(vehicleId)
+    () => existingReport || createEmptyConditionReport(vehicleId)
   );
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -83,8 +81,9 @@ const ConditionReportModal = ({
 
   const handleSave = () => {
     saveReportMutation.mutate(report, {
-      onSuccess: () => {
-        onSave(report);
+      onSuccess: (data) => {
+        onSave(data);
+        setReport(data);
         onOpenChange(false);
       }
     });
@@ -100,10 +99,18 @@ const ConditionReportModal = ({
     });
   };
 
-  const handlePdfUpload = (file: File) => {
+  const handlePdfUpload = async (file: File) => {
     setUploadedPdf(file);
-    // In a real app, upload to storage and get URL
-    handleReportChange({ pdfReportUrl: URL.createObjectURL(file) });
+    if (dbReport?.id) {
+      try {
+        const updated = await uploadPdfMutation.mutateAsync({ id: dbReport.id, file });
+        setReport(updated);
+      } catch {
+        handleReportChange({ pdfReportUrl: URL.createObjectURL(file) });
+      }
+    } else {
+      handleReportChange({ pdfReportUrl: URL.createObjectURL(file) });
+    }
     setActiveTab('preview');
   };
 

@@ -7,17 +7,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import EmailDetailView, { type EmailItem } from "./EmailDetailView";
 
-const mockEmails: EmailItem[] = [
-  { id: "e1", from: "Mike's Transport", fromInitials: "MT", to: "you", subject: "BOL for LD-024 — Signed Copy", preview: "Hi, please find the signed BOL attached for the BMW X5 pickup today. Let me know if you need anything else.", body: "Hi,\n\nPlease find the signed BOL attached for the BMW X5 pickup today at 1420 Industrial Blvd.\n\nThe vehicle was inspected and loaded without any issues. Condition report photos are included as well.\n\nLet me know if you need anything else.\n\nBest regards,\nMike's Transport", time: "11:20 AM", read: false, starred: false, hasAttachment: true, direction: "inbound", shipmentId: "LD-024" },
-  { id: "e2", from: "You", fromInitials: "SD", to: "FastHaul LLC", subject: "Re: Invoice #INV-2024-019", preview: "Payment has been processed via ACH. You should see it within 2-3 business days.", body: "Hi FastHaul team,\n\nPayment has been processed via ACH for Invoice #INV-2024-019. You should see it within 2-3 business days.\n\nPlease confirm receipt once it arrives.\n\nThank you,\nShipper Dispatch", time: "10:45 AM", read: true, starred: false, hasAttachment: false, direction: "outbound", shipmentId: "LD-019" },
-  { id: "e3", from: "Summit Logistics", fromInitials: "SL", to: "you", subject: "Address Confirmation Needed — LD-018", preview: "We're arriving tomorrow morning but the delivery address doesn't match Google Maps. Can you confirm?", body: "Hello,\n\nWe're arriving tomorrow morning for the delivery of LD-018, but the delivery address provided doesn't match what we see on Google Maps.\n\nCould you please confirm the correct address? We want to make sure we arrive at the right location.\n\nThanks,\nSummit Logistics", time: "9:30 AM", read: false, starred: true, hasAttachment: false, direction: "inbound", shipmentId: "LD-018" },
-  { id: "e4", from: "You", fromInitials: "SD", to: "Express Auto Carriers", subject: "Delivery Confirmed — Thank You", preview: "Confirming the vehicle was received in good condition. Great service as always.", body: "Hi Express Auto Carriers,\n\nConfirming the vehicle for LD-022 was received in good condition. Great service as always.\n\nLooking forward to working with you again.\n\nBest,\nShipper Dispatch", time: "Yesterday", read: true, starred: false, hasAttachment: false, direction: "outbound", shipmentId: "LD-022" },
-  { id: "e5", from: "Pinnacle Haulers", fromInitials: "PH", to: "you", subject: "Invoice #INV-2024-015", preview: "Attached is the invoice for the completed transport of LD-015. Payment terms: Net 30.", body: "Hello,\n\nAttached is the invoice for the completed transport of LD-015.\n\nPayment terms: Net 30\nAmount: $1,250.00\n\nPlease process at your earliest convenience.\n\nThank you,\nPinnacle Haulers", time: "Yesterday", read: false, starred: false, hasAttachment: true, direction: "inbound", shipmentId: "LD-015" },
-  { id: "e6", from: "You", fromInitials: "SD", to: "Mike's Transport", subject: "Pickup Instructions — LD-024", preview: "Keys are with the lot manager. Gate code is 4521. Please text on arrival.", body: "Hi Mike,\n\nHere are the pickup instructions for LD-024:\n\n• Location: 1420 Industrial Blvd, Dallas TX\n• Keys are with the lot manager (ask for John)\n• Gate code: 4521\n• Please text me on arrival\n\nThanks,\nShipper Dispatch", time: "2 days ago", read: true, starred: true, hasAttachment: false, direction: "outbound", shipmentId: "LD-024" },
-];
-
 const EmailsTab = () => {
-  const [emails, setEmails] = useState(mockEmails);
+  const [emails, setEmails] = useState<EmailItem[]>([]);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
 
   const selectedEmail = emails.find(e => e.id === selectedEmailId) || null;
@@ -44,7 +35,13 @@ const EmailsTab = () => {
   return (
     <div className="flex-1 flex flex-col">
       <div className="flex-1 overflow-y-auto scrollbar-visible">
-        {emails.map((email) => (
+        {emails.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+            <Mail className="h-12 w-12 mb-3 opacity-30" />
+            <p>No emails yet</p>
+          </div>
+        ) : (
+        emails.map((email) => (
           <div
             key={email.id}
             onClick={() => handleSelectEmail(email.id)}
@@ -94,7 +91,8 @@ const EmailsTab = () => {
               {!email.read && <div className="w-2 h-2 rounded-full bg-primary" />}
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
     </div>
   );

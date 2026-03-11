@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { 
   DollarSign, AlertTriangle, Plus, CheckCircle, Clock, XCircle, 
   CreditCard, Receipt, Wallet, FileText
@@ -16,9 +16,9 @@ import DeleteCostModal from "@/components/accounting/DeleteCostModal";
 import ViewDocsModal from "@/components/accounting/ViewDocsModal";
 import AccountingHistoryModal from "@/components/accounting/AccountingHistoryModal";
 import AccountingFiltersBar, { AccountingFilters, SortField, SortDirection } from "@/components/accounting/AccountingFiltersBar";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import * as accountingService from "@/services/accountingService";
 
 interface HistoryEvent {
   id: string;
@@ -78,88 +78,25 @@ const Accounting = () => {
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-  // Fetch records from database
-  useEffect(() => {
-    const fetchRecords = async () => {
-      setLoading(true);
-      try {
-        const db = supabase as any;
-        
-        // Fetch records with history
-        const { data: recordsData, error: recordsError } = await db
-          .from('accounting_records')
-          .select('*')
-          .order('date', { ascending: false });
-
-        if (recordsError) throw recordsError;
-
-        const { data: historyData, error: historyError } = await db
-          .from('accounting_history')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (historyError) throw historyError;
-
-        // Map database records to local format
-        const mappedRecords: AccountingRecord[] = (recordsData || []).map((r: any) => {
-          const recordHistory = (historyData || [])
-            .filter((h: any) => h.record_id === r.id)
-            .map((h: any) => ({
-              id: h.id,
-              type: h.action_type as HistoryEvent["type"],
-              timestamp: h.created_at,
-              performedBy: h.performed_by,
-              details: h.details || '',
-              previousValue: h.previous_value,
-              newValue: h.new_value,
-            }));
-
-          return {
-            id: r.id,
-            listingId: r.listing_id,
-            vehicleYear: r.vehicle_year || new Date().getFullYear().toString(),
-            vehicleMake: r.vehicle_make || 'Unknown',
-            vehicleModel: r.vehicle_model || 'Vehicle',
-            vin: r.vin || 'N/A',
-            stockNumber: r.stock_number || 'N/A',
-            cost: Number(r.cost),
-            date: r.date,
-            paymentMethod: r.payment_method as AccountingRecord["paymentMethod"] || 'cod',
-            payoutStatus: r.payout_status as AccountingRecord["payoutStatus"],
-            hasDocs: r.has_docs,
-            history: recordHistory,
-          };
-        });
-
-        setRecords(mappedRecords);
-      } catch (error) {
-        console.error('Error fetching records:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load accounting records",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRecords();
-
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel('accounting-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'accounting_records' },
-        () => fetchRecords()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+  const fetchRecords = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await accountingService.listRecords();
+      setRecords(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load accounting records",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [toast]);
+
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
 
   const handleSortChange = (field: SortField, direction: SortDirection) => {
     setSortField(field);
@@ -168,42 +105,10 @@ const Accounting = () => {
 
   const handleAddCost = async (newRecord: Omit<AccountingRecord, "id">) => {
     try {
-      const db = supabase as any;
-      
-      const { data, error } = await db
-        .from('accounting_records')
-        .insert({
-          listing_id: newRecord.listingId,
-          vehicle_year: newRecord.vehicleYear,
-          vehicle_make: newRecord.vehicleMake,
-          vehicle_model: newRecord.vehicleModel,
-          vin: newRecord.vin,
-          stock_number: newRecord.stockNumber,
-          cost: newRecord.cost,
-          date: newRecord.date,
-          payment_method: newRecord.paymentMethod,
-          payout_status: newRecord.payoutStatus,
-          has_docs: newRecord.hasDocs,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Add history entry
-      await db.from('accounting_history').insert({
-        record_id: data.id,
-        action_type: 'created',
-        performed_by: performedBy,
-        details: 'Record created',
-      });
-
-      toast({
-        title: "Success",
-        description: "Record added successfully",
-      });
+      await accountingService.createRecord(newRecord, performedBy);
+      toast({ title: "Success", description: "Record added successfully" });
+      fetchRecords();
     } catch (error) {
-      console.error('Error adding record:', error);
       toast({
         title: "Error",
         description: "Failed to add record",
@@ -214,82 +119,26 @@ const Accounting = () => {
 
   const handleEditCost = async (updatedRecord: AccountingRecord) => {
     try {
-      const db = supabase as any;
-      const originalRecord = records.find(r => r.id === updatedRecord.id);
-      if (!originalRecord) return;
-
-      const { error } = await db
-        .from('accounting_records')
-        .update({
-          listing_id: updatedRecord.listingId,
-          vehicle_year: updatedRecord.vehicleYear,
-          vehicle_make: updatedRecord.vehicleMake,
-          vehicle_model: updatedRecord.vehicleModel,
+      await accountingService.updateRecord(
+        updatedRecord.id,
+        {
+          listingId: updatedRecord.listingId,
+          vehicleYear: updatedRecord.vehicleYear,
+          vehicleMake: updatedRecord.vehicleMake,
+          vehicleModel: updatedRecord.vehicleModel,
           vin: updatedRecord.vin,
-          stock_number: updatedRecord.stockNumber,
+          stockNumber: updatedRecord.stockNumber,
           cost: updatedRecord.cost,
           date: updatedRecord.date,
-          payment_method: updatedRecord.paymentMethod,
-          payout_status: updatedRecord.payoutStatus,
-          has_docs: updatedRecord.hasDocs,
-        })
-        .eq('id', updatedRecord.id);
-
-      if (error) throw error;
-
-      // Log changes to history
-      const historyEntries: any[] = [];
-
-      if (originalRecord.cost !== updatedRecord.cost) {
-        historyEntries.push({
-          record_id: updatedRecord.id,
-          action_type: 'cost_change',
-          previous_value: `$${originalRecord.cost}`,
-          new_value: `$${updatedRecord.cost}`,
-          performed_by: performedBy,
-          details: 'Cost updated',
-        });
-      }
-
-      if (originalRecord.paymentMethod !== updatedRecord.paymentMethod) {
-        historyEntries.push({
-          record_id: updatedRecord.id,
-          action_type: 'status_change',
-          previous_value: originalRecord.paymentMethod,
-          new_value: updatedRecord.paymentMethod,
-          performed_by: performedBy,
-          details: 'Payment method changed',
-        });
-      }
-
-      if (originalRecord.payoutStatus !== updatedRecord.payoutStatus) {
-        historyEntries.push({
-          record_id: updatedRecord.id,
-          action_type: 'payout_change',
-          previous_value: originalRecord.payoutStatus,
-          new_value: updatedRecord.payoutStatus,
-          performed_by: performedBy,
-          details: 'Payout status changed',
-        });
-      }
-
-      if (historyEntries.length === 0) {
-        historyEntries.push({
-          record_id: updatedRecord.id,
-          action_type: 'edited',
-          performed_by: performedBy,
-          details: 'Record edited',
-        });
-      }
-
-      await db.from('accounting_history').insert(historyEntries);
-
-      toast({
-        title: "Success",
-        description: "Record updated successfully",
-      });
+          paymentMethod: updatedRecord.paymentMethod,
+          payoutStatus: updatedRecord.payoutStatus,
+          hasDocs: updatedRecord.hasDocs,
+        },
+        performedBy
+      );
+      toast({ title: "Success", description: "Record updated successfully" });
+      fetchRecords();
     } catch (error) {
-      console.error('Error updating record:', error);
       toast({
         title: "Error",
         description: "Failed to update record",
@@ -300,21 +149,10 @@ const Accounting = () => {
 
   const handleDeleteCost = async (id: string) => {
     try {
-      const db = supabase as any;
-      
-      const { error } = await db
-        .from('accounting_records')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Record deleted successfully",
-      });
+      await accountingService.deleteRecord(id);
+      toast({ title: "Success", description: "Record deleted successfully" });
+      fetchRecords();
     } catch (error) {
-      console.error('Error deleting record:', error);
       toast({
         title: "Error",
         description: "Failed to delete record",
@@ -325,30 +163,14 @@ const Accounting = () => {
 
   const handleInlineUpdate = async (record: AccountingRecord, field: string, value: string) => {
     try {
-      const db = supabase as any;
-      const dbField = field === "paymentMethod" ? "payment_method" : field === "payoutStatus" ? "payout_status" : field;
-      
-      const { error } = await db
-        .from('accounting_records')
-        .update({ [dbField]: value, updated_at: new Date().toISOString() })
-        .eq('id', record.id);
-
-      if (error) throw error;
-
-      // Log history
-      const previousValue = String((record as any)[field]);
-      await db.from('accounting_history').insert({
-        record_id: record.id,
-        action_type: field === "payoutStatus" ? "payout_change" : field === "paymentMethod" ? "status_change" : "edited",
-        previous_value: previousValue,
-        new_value: value,
-        performed_by: performedBy,
-        details: `${field === "date" ? "Date" : field === "paymentMethod" ? "Payment method" : "Payout status"} changed`,
-      });
-
+      const updates: Partial<AccountingRecord> = {};
+      if (field === "paymentMethod") updates.paymentMethod = value as AccountingRecord["paymentMethod"];
+      else if (field === "payoutStatus") updates.payoutStatus = value as AccountingRecord["payoutStatus"];
+      else if (field === "date") updates.date = value;
+      await accountingService.updateRecord(record.id, updates, performedBy);
       toast({ title: "Updated", description: "Record updated successfully" });
+      fetchRecords();
     } catch (error) {
-      console.error('Error updating record inline:', error);
       toast({ title: "Error", description: "Failed to update record", variant: "destructive" });
     }
   };

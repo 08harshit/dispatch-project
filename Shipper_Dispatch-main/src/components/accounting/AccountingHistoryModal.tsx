@@ -66,7 +66,7 @@ const AccountingHistoryModal = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-primary" />
-            Historique des modifications
+            Change History
             {listingId && (
               <Badge variant="outline" className="ml-2 font-mono">
                 {listingId}
@@ -79,7 +79,7 @@ const AccountingHistoryModal = ({
           {history.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Aucun historique disponible</p>
+              <p>No history available</p>
             </div>
           ) : (
             <div className="relative">
@@ -127,7 +127,7 @@ const AccountingHistoryModal = ({
                         
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>
-                            {format(new Date(event.timestamp), "dd MMM yyyy 'à' HH:mm")}
+                            {format(new Date(event.timestamp), "dd MMM yyyy 'at' HH:mm")}
                           </span>
                           <span className="flex items-center gap-1">
                             <User className="h-3 w-3" />

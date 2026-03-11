@@ -1,6 +1,6 @@
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent } from "@/components/ui/card";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
   TrendingUp, 
   Truck, 
@@ -13,108 +13,53 @@ import {
   ArrowDownRight
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import * as analyticsService from "@/services/analyticsService";
 
 type TimeFilter = "weekly" | "monthly" | "quarterly" | "yearly";
 
+const METRIC_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Total Shipments": Package,
+  "Spends": DollarSign,
+  "Avg. Delivery Time": Clock,
+  "Active Routes": MapPin,
+};
+
 const Analytics = () => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("monthly");
+  const [keyMetrics, setKeyMetrics] = useState<analyticsService.ShipperStat[]>([]);
+  const [chartData, setChartData] = useState<analyticsService.ShipperTrend[]>([]);
+  const [routeDistribution, setRouteDistribution] = useState<analyticsService.RouteDistribution[]>([]);
+  const [topRoutes, setTopRoutes] = useState<analyticsService.TopRoute[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const weeklyData = [
-    { name: "Mon", shipments: 12, cost: 8 },
-    { name: "Tue", shipments: 15, cost: 11 },
-    { name: "Wed", shipments: 18, cost: 14 },
-    { name: "Thu", shipments: 14, cost: 10 },
-    { name: "Fri", shipments: 20, cost: 16 },
-    { name: "Sat", shipments: 8, cost: 6 },
-    { name: "Sun", shipments: 5, cost: 4 },
-  ];
-  const monthlyData = [
-    { name: "Jan", shipments: 45, cost: 32 },
-    { name: "Feb", shipments: 52, cost: 38 },
-    { name: "Mar", shipments: 48, cost: 35 },
-    { name: "Apr", shipments: 61, cost: 44 },
-    { name: "May", shipments: 55, cost: 41 },
-    { name: "Jun", shipments: 67, cost: 49 },
-  ];
-
-  const quarterlyData = [
-    { name: "Jan", shipments: 45, cost: 32 },
-    { name: "Feb", shipments: 52, cost: 38 },
-    { name: "Mar", shipments: 48, cost: 35 },
-    { name: "Apr", shipments: 61, cost: 44 },
-    { name: "May", shipments: 55, cost: 41 },
-    { name: "Jun", shipments: 67, cost: 49 },
-    { name: "Jul", shipments: 72, cost: 54 },
-    { name: "Aug", shipments: 68, cost: 51 },
-    { name: "Sep", shipments: 75, cost: 58 },
-  ];
-
-  const yearlyData = [
-    { name: "Q1", shipments: 145, cost: 105 },
-    { name: "Q2", shipments: 183, cost: 134 },
-    { name: "Q3", shipments: 215, cost: 163 },
-    { name: "Q4", shipments: 198, cost: 148 },
-  ];
-
-  const getChartData = () => {
-    switch (timeFilter) {
-      case "weekly": return weeklyData;
-      case "monthly": return monthlyData;
-      case "quarterly": return quarterlyData;
-      case "yearly": return yearlyData;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [stats, trends, distribution, routes] = await Promise.all([
+        analyticsService.getShipperStats("30days"),
+        analyticsService.getShipperTrends(timeFilter),
+        analyticsService.getRouteDistribution(),
+        analyticsService.getTopRoutes(),
+      ]);
+      setKeyMetrics(stats);
+      setChartData(trends);
+      setRouteDistribution(distribution.length > 0 ? distribution : [
+        { name: "No data", value: 100, color: "hsl(0, 0%, 80%)" },
+      ]);
+      setTopRoutes(routes);
+    } catch {
+      setKeyMetrics([]);
+      setChartData([]);
+      setRouteDistribution([{ name: "No data", value: 100, color: "hsl(0, 0%, 80%)" }]);
+      setTopRoutes([]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [timeFilter]);
 
-  const chartData = getChartData();
-
-  const routeDistribution = [
-    { name: "East Coast", value: 35, color: "hsl(36, 70%, 75%)" },
-    { name: "West Coast", value: 28, color: "hsl(160, 45%, 70%)" },
-    { name: "Midwest", value: 22, color: "hsl(200, 45%, 72%)" },
-    { name: "South", value: 15, color: "hsl(280, 35%, 75%)" },
-  ];
-
-  const keyMetrics = [
-    { 
-      label: "Total Shipments", 
-      value: "328", 
-      change: 12.5, 
-      positive: true,
-      icon: Package,
-      period: "This month"
-    },
-    { 
-      label: "Spends", 
-      value: "$189,420", 
-      change: 8.3, 
-      positive: true,
-      icon: DollarSign,
-      period: "This month"
-    },
-    { 
-      label: "Avg. Delivery Time", 
-      value: "2.4 days", 
-      change: 15.2, 
-      positive: true,
-      icon: Clock,
-      period: "vs last month"
-    },
-    { 
-      label: "Active Routes", 
-      value: "47", 
-      change: 3.1, 
-      positive: false,
-      icon: MapPin,
-      period: "This week"
-    },
-  ];
-
-  const topRoutes = [
-    { from: "Los Angeles, CA", to: "Phoenix, AZ", count: 24, cost: "$18,400" },
-    { from: "Dallas, TX", to: "Houston, TX", count: 21, cost: "$12,600" },
-    { from: "Chicago, IL", to: "Detroit, MI", count: 18, cost: "$14,200" },
-    { from: "Miami, FL", to: "Atlanta, GA", count: 16, cost: "$15,800" },
-  ];
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   return (
     <MainLayout>
@@ -137,28 +82,43 @@ const Analytics = () => {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {keyMetrics.map((metric) => (
-            <Card key={metric.label} className="dashboard-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <metric.icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className={`flex items-center gap-1 text-xs font-semibold ${metric.positive ? 'text-emerald-500' : 'text-red-400'}`}>
-                    {metric.positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                    {Math.abs(metric.change)}%
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs text-muted-foreground">{metric.label}</p>
-                  <p className="text-2xl font-bold text-foreground mt-0.5">{metric.value}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">{metric.period}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="dashboard-card border-border">
+                <CardContent className="p-5">
+                  <div className="h-20 animate-pulse bg-muted rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {keyMetrics.map((metric) => {
+              const Icon = METRIC_ICONS[metric.label] ?? Package;
+              return (
+                <Card key={metric.label} className="dashboard-card border-border">
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <Icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className={`flex items-center gap-1 text-xs font-semibold ${metric.positive ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {metric.positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                        {Math.abs(metric.change)}%
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <p className="text-xs text-muted-foreground">{metric.label}</p>
+                      <p className="text-2xl font-bold text-foreground mt-0.5">{metric.value}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{metric.period}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

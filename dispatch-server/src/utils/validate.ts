@@ -30,7 +30,7 @@ export function validateBody<T>(schema: ZodSchema<T>) {
  */
 export function validateUuidParam(paramName = "id") {
     return (req: Request, res: Response, next: NextFunction) => {
-        const id = req.params[paramName]; console.log("Validating UUID:", { paramName, id });
+        const id = req.params[paramName];
         if (!id || !uuidParam.safeParse(id).success) {
             return res.status(400).json({
                 success: false,

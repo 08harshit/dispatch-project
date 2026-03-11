@@ -4,16 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import CallDetailView, { type CallItem } from "./CallDetailView";
 
-const mockCalls: CallItem[] = [
-  { id: "c1", courierName: "Mike's Transport", courierInitials: "MT", phone: "+1 (305) 555-0142", type: "incoming", duration: "3:24", time: "10:50 AM", shipmentId: "LD-024" },
-  { id: "c2", courierName: "Summit Logistics", courierInitials: "SL", phone: "+1 (214) 555-0198", type: "missed", duration: "-", time: "9:15 AM", shipmentId: "LD-018" },
-  { id: "c3", courierName: "FastHaul LLC", courierInitials: "FH", phone: "+1 (404) 555-0267", type: "outgoing", duration: "1:47", time: "Yesterday", shipmentId: "LD-019" },
-  { id: "c4", courierName: "Express Auto Carriers", courierInitials: "EA", phone: "+1 (713) 555-0334", type: "voicemail", duration: "0:32", time: "Yesterday", shipmentId: "LD-022" },
-  { id: "c5", courierName: "Mike's Transport", courierInitials: "MT", phone: "+1 (305) 555-0142", type: "outgoing", duration: "5:12", time: "2 days ago", shipmentId: "LD-024" },
-  { id: "c6", courierName: "Pinnacle Haulers", courierInitials: "PH", phone: "+1 (602) 555-0411", type: "incoming", duration: "2:08", time: "2 days ago", shipmentId: "LD-015" },
-  { id: "c7", courierName: "Summit Logistics", courierInitials: "SL", phone: "+1 (214) 555-0198", type: "missed", duration: "-", time: "3 days ago" },
-];
-
 const getCallIcon = (type: CallItem["type"]) => {
   switch (type) {
     case "incoming": return <PhoneIncoming className="h-4 w-4 text-emerald-500" />;
@@ -34,8 +24,9 @@ const getCallLabel = (type: CallItem["type"]) => {
 
 const CallsTab = () => {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const calls: CallItem[] = [];
 
-  const selectedCall = mockCalls.find(c => c.id === selectedCallId) || null;
+  const selectedCall = calls.find(c => c.id === selectedCallId) || null;
 
   if (selectedCall) {
     return (
@@ -49,7 +40,13 @@ const CallsTab = () => {
   return (
     <div className="flex-1 flex flex-col">
       <div className="flex-1 overflow-y-auto scrollbar-visible">
-        {mockCalls.map((call) => (
+        {calls.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+            <Phone className="h-12 w-12 mb-3 opacity-30" />
+            <p>No calls yet</p>
+          </div>
+        ) : (
+        calls.map((call) => (
           <div
             key={call.id}
             onClick={() => setSelectedCallId(call.id)}
@@ -93,7 +90,8 @@ const CallsTab = () => {
               )}
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
     </div>
   );

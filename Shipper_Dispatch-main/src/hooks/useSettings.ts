@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import * as settingsService from "@/services/settingsService";
 
 export interface ProfileSettings {
   companyName: string;
@@ -37,11 +38,11 @@ export interface AppSettings {
 
 const defaultSettings: AppSettings = {
   profile: {
-    companyName: "Shipper Dispatch Co.",
-    contactName: "John Smith",
-    email: "john@shipperdispatch.com",
-    phone: "(555) 123-4567",
-    address: "123 Logistics Blvd, Dallas, TX 75201",
+    companyName: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    address: "",
   },
   notifications: {
     emailNotifications: true,
@@ -62,24 +63,49 @@ const defaultSettings: AppSettings = {
   },
 };
 
-const STORAGE_KEY = "shipper-dispatch-settings";
-
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
-    } catch {
-      return defaultSettings;
-    }
-  });
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [profile, notifications] = await Promise.all([
+          settingsService.getProfile(),
+          settingsService.getNotificationPreferences(),
+        ]);
+        setSettings((prev) => ({
+          ...prev,
+          profile: {
+            companyName: profile.companyName ?? profile.displayName ?? prev.profile.companyName,
+            contactName: profile.contactName ?? profile.displayName ?? prev.profile.contactName,
+            email: profile.email ?? prev.profile.email,
+            phone: profile.phone ?? prev.profile.phone,
+            address: profile.address ?? prev.profile.address,
+          },
+          notifications: {
+            emailNotifications: notifications.emailNotifications ?? prev.notifications.emailNotifications,
+            shipmentUpdates: notifications.shipmentUpdates ?? prev.notifications.shipmentUpdates,
+            driverAlerts: notifications.driverAlerts ?? prev.notifications.driverAlerts,
+            paymentAlerts: notifications.paymentAlerts ?? prev.notifications.paymentAlerts,
+            weeklyReports: notifications.weeklyReports ?? prev.notifications.weeklyReports,
+          },
+        }));
+      } catch {
+        // Keep defaults on error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []);
 
   const updateSettings = useCallback(<K extends keyof AppSettings>(
     section: K,
     values: Partial<AppSettings[K]>
   ) => {
-    setSettings(prev => ({
+    setSettings((prev) => ({
       ...prev,
       [section]: { ...prev[section], ...values },
     }));
@@ -87,11 +113,20 @@ export function useSettings() {
 
   const saveSettings = useCallback(async () => {
     setIsSaving(true);
-    // Simulate network delay
-    await new Promise(r => setTimeout(r, 500));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    setIsSaving(false);
-  }, [settings]);
+    try {
+      await Promise.all([
+        settingsService.updateProfile({
+          companyName: settings.profile.companyName,
+          contactName: settings.profile.contactName,
+          phone: settings.profile.phone,
+          address: settings.profile.address,
+        }),
+        settingsService.updateNotificationPreferences(settings.notifications),
+      ]);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [settings.profile, settings.notifications]);
 
-  return { settings, updateSettings, saveSettings, isSaving };
+  return { settings, updateSettings, saveSettings, isSaving, isLoading };
 }
